@@ -21,14 +21,14 @@ const definitions = [
   ['start_many', 'Start up to 16 independent tasks concurrently on one authorized backend with its saved configuration.',
     { backend, userAuthorized, tasks: { type: 'array', minItems: 1, maxItems: 16, items: { type: 'object', properties: task, required: ['prompt', 'requestId'], additionalProperties: false } } },
     ['backend', 'userAuthorized', 'tasks'], false],
-  ['resume', 'Continue an existing session using its original settings. DSH requires its original mode. Independent Codex threads open in the desktop app are locked.', { ...dispatch, mode, sessionId: string }, ['backend', 'userAuthorized', 'prompt', 'requestId', 'sessionId'], false],
+  ['resume', 'Continue an existing session using its original settings. DSH requires its original mode.', { ...dispatch, mode, sessionId: string }, ['backend', 'userAuthorized', 'prompt', 'requestId', 'sessionId'], false],
   ['list', 'List the current parent chat’s task cards across both backends.', {}, [], true],
   ['status', 'Read compact progress and runtime settings for a job owned by the current chat.', { jobId }, ['jobId'], true],
   ['wait', 'Wait up to 45 seconds for completion or attention. Includes complete answers for ended jobs.', { jobIds: { type: 'array', items: string }, afterCursor: { type: 'integer' }, timeoutMs: { type: 'integer', minimum: 0, maximum: 45000 } }, [], true],
   ['result', 'Read the complete answer and runtime settings for one job.', { jobId }, ['jobId'], true],
   ['cancel', 'Interrupt one job in the current chat.', { jobId }, ['jobId'], false],
   ['steer', 'Send an explicitly authorized follow-up to an independent Codex job while it runs.', { jobId, prompt: string, userAuthorized }, ['jobId', 'prompt', 'userAuthorized'], false],
-  ['open', 'Show the current chat’s task panel. If jobId is supplied, open the underlying DSH Desktop session or ended Codex thread only when asked. Opening in Codex holds its writer lock until the desktop app quits.', { jobId }, [], false],
+  ['open', 'Show the current chat’s task panel. Supply jobId only when asked to open the underlying DSH Desktop session.', { jobId }, [], false],
 ];
 const tools = definitions.map(([key, description, properties, required, readOnlyHint]) => {
   const scoped = key !== 'doctor';

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
-import {loadBridge} from '../plugins/agent-hub/server/bridge.mjs';
+import {fakeConfig,fakeBridgeState,fakeCodexState} from './fixtures.mjs';
+import {loadBridge,loadCodexBridge} from '../plugins/agent-hub/server/bridge.mjs';
 const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-adapter-test-'));
 const remove=root=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('codex-dsh-adapter-test-'));fs.rmSync(root,{recursive:true,force:true})};
 const calls=root=>fs.readFileSync(path.join(fakeBridgeState(root),'calls.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
@@ -21,4 +21,14 @@ test('all task methods force client codex-agent-hub, configuration metadata is n
     assert.equal(calls(root).find(call=>call.method==='prepare').params.prompt,undefined);
     assert.throws(()=>bridge.call('headless','shutdown'),/Unsupported/);
   }finally{remove(root)}
+});
+
+test('an old Codex bridge cannot start a session in the Desktop store', async () => {
+  const root = temporary();
+  try {
+    const state = fakeCodexState(root, 'http://127.0.0.1:1');
+    fs.writeFileSync(path.join(state, 'fake.json'), JSON.stringify({ isolatedStarts: false }));
+    const bridge = await loadCodexBridge({ state });
+    await assert.rejects(bridge.call('start', {}, { start: true }), /isolated storage/);
+  } finally { remove(root); }
 });

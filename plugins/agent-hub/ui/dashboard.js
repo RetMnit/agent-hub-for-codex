@@ -85,13 +85,9 @@ function draw(data) {
     }
     if(job.backgroundJobs?.length)card.append(el('p','仍有后台工作：'+job.backgroundJobs.length,'error'));
     const actions=el('div',undefined,'card-actions');
-    if (job.sessionId && (job.mode === 'desktop' || codex && ['completed','failed','cancelled','interrupted'].includes(job.status))) {
-      const open = el('button', codex ? '在 Codex 中打开' : '在 DSH 中查看');
-      open.onclick = () => {
-        if (!codex || confirm('打开后，须完全退出 Codex 桌面应用才能从 Agent Hub 续接。现在打开？')) {
-          void call('open',{jobId:job.jobId}).catch(error=>alert(error.message));
-        }
-      };
+    if (job.sessionId && !codex && job.mode === 'desktop') {
+      const open = el('button', '在 DSH 中查看');
+      open.onclick = () => call('open',{jobId:job.jobId}).catch(error=>alert(error.message));
       actions.append(open);
     }
     if(['starting','running','waiting-user','waiting-approval'].includes(job.status)){const cancel=el('button','取消');cancel.onclick=()=>call('cancel',{jobId:job.jobId}).catch(error=>alert(error.message));actions.append(cancel)}

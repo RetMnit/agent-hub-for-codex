@@ -76,6 +76,10 @@ export async function loadCodexBridge({ state = process.env.CODEX_BRIDGE_STATE_D
         } finally { if (connecting === pending) connecting = undefined; }
       }
       const current = connection;
+      if (method === 'start' && !current.isolatedStarts) {
+        if (connection === current) connection = undefined;
+        throw new Error('New Codex tasks require an active Codex Bridge 0.5.0 or newer with isolated storage. Install it or wait for the previous bridge to finish its tasks, then retry.');
+      }
       try { return await current.call(method, { ...params, client: 'codex-agent-hub' }); }
       catch (error) {
         if ((error.code === 'bridge/offline' || error.cause || error.name === 'TimeoutError') && connection === current) connection = undefined;

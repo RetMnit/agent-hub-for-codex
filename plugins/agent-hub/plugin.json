@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agent-hub",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Delegate local tasks to DSH and independent Codex threads with saved settings and a shared task panel.",
   "homepage": "https://github.com/RetMnit/agent-hub-for-codex",
   "repository": "https://github.com/RetMnit/agent-hub-for-codex.git",

@@ -21,8 +21,9 @@ export function connect({state}) {
 }
 
 export async function connectCodex({ state, start = true }) {
-  const { endpoint } = JSON.parse(fs.readFileSync(path.join(state, 'fake.json'), 'utf8'));
+  const { endpoint, isolatedStarts = true } = JSON.parse(fs.readFileSync(path.join(state, 'fake.json'), 'utf8'));
   return {
+    isolatedStarts,
     async call(method, params) {
       const body = JSON.stringify({ mode: 'codex', method, params, options: { start } });
       const reply = await (await fetch(endpoint, { method: 'POST', body })).json();

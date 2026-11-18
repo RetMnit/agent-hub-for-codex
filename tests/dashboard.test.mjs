@@ -57,6 +57,14 @@ test('dashboard renders all independent tasks and reports actual DOM results wit
   handlers.focus();for(let i=0;i<10;i++)await Promise.resolve();assert.equal(requests.filter(r=>r.method==='list').length,2);
   assert.ok(!requests.some(r=>/start|resume|saveConfiguration/.test(r.method)));
   handlers.pagehide();assert.ok(requests.some(request=>request.method==='panelHeartbeat'&&request.params.closed===true&&request.params.conversationId==='chat-A'));
+  const codexJob = { ...jobs[0], jobId: 'codex:job', sessionId: 'codex-session', backend: 'codex', mode: undefined };
+  const mixed = [jobs[1], codexJob];
+  context.testData = { conversationId: 'chat-A', providers: {}, jobs: mixed, subagents: groupSubagents(mixed) };
+  vm.runInNewContext('draw(testData)', context);
+  const actions = jobId => elements.get('jobs').children.find(card => card.dataset.jobId === jobId)
+    .children.find(child => child.className === 'card-actions')?.children.map(button => button.textContent) ?? [];
+  assert.ok(actions(jobs[1].jobId).includes('在 DSH 中查看'));
+  assert.deepEqual(actions(codexJob.jobId), []);
 });
 
 test('settings use mode-specific catalogs, group models, link efforts and save only the selected backend', async () => {

@@ -7,12 +7,12 @@ Agent Hub 在一个本地看板中管理 DSH 和独立 Codex 任务。启用插�
 需要 Windows、Node.js 22+、Codex 和 Microsoft Edge。使用哪个后端，就安装哪个公共运行时。两个后端可以独立安装。
 
 - [dsh-bridge](https://github.com/RetMnit/dsh-bridge/tree/v0.4.0) v0.4.0。在桥接检出目录运行 `node setup.mjs`，再完全退出并重新打开 DSH Desktop 加载公共 bundle。
-- [codex-bridge](https://github.com/RetMnit/codex-bridge/tree/v0.4.0) v0.4.0。在桥接检出目录运行 `node setup.mjs`。任务使用已配置的本地 Codex CLI 登录。
+- [codex-bridge](https://github.com/RetMnit/codex-bridge) v0.5.0 或更新版本。在桥接检出目录运行 `node setup.mjs`，按桥接说明为独立后台配置登录或配置模型提供方。
 
 从 GitHub 的发布标签安装。若已登记本地检出或其他标签，先运行 `codex plugin marketplace remove codex-agent-hub-tools`。CLI 可以使用 Codex Desktop 自带的 `codex.exe`。
 
 ```powershell
-codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.3
+codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.4
 $installed = codex plugin add agent-hub@codex-agent-hub-tools --json | ConvertFrom-Json
 node (Join-Path $installed.installedPath 'server/setup.mjs')
 ```
@@ -29,7 +29,7 @@ Setup 初始化 Agent Hub 自身目录和访问令牌。首次可用 `CODEX_AGEN
 - DSH 沿用默认模型时，可以直接选该模型支持的推理档位。选中具体档位会同时选中该模型。沿用其他预设时，先明确选择模型再设置档位。任务卡片优先显示 DSH 请求实际使用的模型和档位。
 - Agent Hub 按用户请求用已保存的配置新建一项或多项任务。DSH 派发须明确指定。修改配置影响后续新建。以同一 requestId 重试会重用初次派发的配置快照。
 - 续接沿用目标会话原来的设置，可以直接续接。DSH 需要指定原来的桌面／后台方式。同一个子会话的多轮任务在同一卡片。
-- 独立 Codex 在后台运行，可以经明确授权向运行中的回合追加消息。任务结束后可以在 Codex 打开线程。打开会持有该线程的写入锁，Agent Hub 要等桌面应用完全退出才能续接。后台执行采用 Codex Bridge 的 `approvalPolicy: "never"`。
+- 独立 Codex 在后台运行，新会话写入 Bridge 的独立会话库。任务进度和结果在 Agent Hub 查看，可按原会话 ID 续接。运行中的回合可以经明确授权追加消息。后台执行采用 Codex Bridge 的 `approvalPolicy: "never"`。
 - 手动重开看板使用 `hub_open`。关闭或最小化窗口时后台任务继续运行，恢复前台重新读取状态。状态与答案只显示在所属父聊天的看板。
 
 ## 工具与记录

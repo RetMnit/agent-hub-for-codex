@@ -155,7 +155,7 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
     assert.equal(codexJob.jobId, 'codex:' + batch.jobs[0].jobId);
     assert.equal(codexJob.backend, 'codex');
     assert.equal((await call('list')).result.subagents.length, 3);
-    assert.equal((await call('open', { jobId: codexJob.jobId })).error.message, 'Open an independent Codex thread after its turn ends');
+    assert.match((await call('open', { jobId: codexJob.jobId })).error.message, /Agent Hub dashboard/);
     assert.match((await call('steer', { jobId: codexJob.jobId, prompt: 'later', userAuthorized: false })).error.message, /explicit user permission/i);
     const steered = (await call('steer', { jobId: codexJob.jobId, prompt: 'later', userAuthorized: true })).result;
     assert.equal(steered.activity.at(-1).text, 'later');
@@ -165,7 +165,8 @@ test('one saved configuration starts a concurrent batch, shows every task, dedup
     bridgeJob.result = 'full answer from fake Codex';
     const waited = (await call('wait', { jobIds: [codexJob.jobId], timeoutMs: 1500 })).result;
     assert.equal(waited.jobs[0].result, bridgeJob.result);
-    assert.equal((await call('open', { jobId: codexJob.jobId })).result.opened, true);
+    assert.match((await call('open', { jobId: codexJob.jobId })).error.message, /Agent Hub dashboard/);
+    assert.ok(!bridgeCalls.some(item => item.mode === 'codex' && item.method === 'open'));
     const freshResume = (await call('resume', { ...launch, conversationId: 'chat-B', sessionId: codexJob.sessionId })).result;
     assert.equal(freshResume.sessionId, codexJob.sessionId);
     assert.equal((await call('configuration', { ...codex, conversationId: 'chat-B' })).result.status, 'missing');

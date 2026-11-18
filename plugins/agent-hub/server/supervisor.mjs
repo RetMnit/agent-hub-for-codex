@@ -280,10 +280,10 @@ const methods = {
     if (!params.jobId) return { conversationId: id, panel: await showPanel(id, 'tasks') };
     const job = locate(params);
     if (!job.sessionId) throw new Error('This task does not have a session yet');
-    if (job.backend === 'codex' && !terminal(job.status)) throw new Error('Open an independent Codex thread after its turn ends');
+    if (job.backend === 'codex') throw new Error('View independent Codex sessions in the Agent Hub dashboard');
     if (job.mode === 'headless') throw new Error('Use the task dashboard to inspect a hidden DSH session');
     const reply = await call(job.backend, job.mode, 'open', { jobId: bridgeId(job) }, { start: true });
-    if (job.backend === 'dsh') (await bridge('dsh')).focusDesktop();
+    (await bridge('dsh')).focusDesktop();
     return reply;
   },
 };
