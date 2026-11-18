@@ -68,7 +68,7 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
     if (!elements.has(id)) elements.set(id, element('div'));
     return elements.get(id);
   };
-  const fields = new Map(['mode', 'location', 'workspace', 'preset', 'model', 'effort', 'permission'].map(name => [name, element('field')]));
+  const fields = new Map(['mode', 'subagentRoute', 'location', 'workspace', 'preset', 'model', 'effort', 'permission'].map(name => [name, element('field')]));
   const button = { disabled: false };
   const form = get('settings');
   form.elements = { namedItem: name => fields.get(name) };
@@ -98,6 +98,7 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
   const flush = () => new Promise(resolve => setImmediate(resolve));
   await open('dsh');
   await flush();
+  assert.equal(get('setting-subagent-route').hidden, true);
   assert.equal(fields.get('model').children[1].tag, 'optgroup');
   assert.equal(fields.get('model').children[1].label, 'Provider');
   assert.ok(fields.get('location').children.some(option => option.value === 'test-dsh'));
@@ -122,11 +123,14 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
   await open('codex');
   await flush();
   assert.equal(get('setting-mode').hidden, true);
+  assert.equal(get('setting-subagent-route').hidden, false);
+  assert.equal(fields.get('subagentRoute').value, 'agent-hub');
+  change('subagentRoute', 'native');
   change('location', 'test-codex');
   change('model', 'codex-model');
   change('effort', 'xhigh');
   await form.onsubmit({ preventDefault() {} });
-  assert.deepEqual(requests.at(-1).params, { backend: 'codex', configurationId: 'codex', revision: 0,
+  assert.deepEqual(requests.at(-1).params, { backend: 'codex', configurationId: 'codex', revision: 0, subagentRoute: 'native',
     values: { workspace: 'test-codex', model: 'codex-model', effort: 'xhigh' } });
   assert.ok(!requests.some(request => /start|resume/.test(request.method)));
 });

@@ -16,10 +16,13 @@ test('settings are scoped per chat and backend, and retries use an immutable sna
   const other = { ...parent, conversationId: 'chat-B' };
   const task = { ...parent, prompt: 'fake task', requestId: 'one', userAuthorized: true };
   assert.equal(store.read(parent).status, 'missing');
+  assert.equal(store.read(parent).subagentRoute, undefined);
+  assert.equal(store.read(codex).subagentRoute, 'agent-hub');
   assert.throws(() => store.resolve(task), /Save this Codex conversation/);
   assert.throws(() => store.resolve({ ...task, userAuthorized: false }), /Explicit user permission/);
   const dshDraft = store.create(parent);
   const codexDraft = store.create({ ...codex, workspace: state });
+  assert.equal(codexDraft.subagentRoute, 'agent-hub');
   assert.equal(codexDraft.initialWorkspace, state);
   assert.notEqual(dshDraft.configurationId, codexDraft.configurationId);
   const dshSave = { ...parent, configurationId: dshDraft.configurationId };
@@ -27,8 +30,14 @@ test('settings are scoped per chat and backend, and retries use an immutable sna
   assert.throws(() => store.confirm({ ...dshSave, backend: 'codex', values: dshValues }), /Unknown configuration/);
   assert.throws(() => store.confirm({ ...dshSave, values: { ...dshValues, workspace: 'relative' } }), /existing absolute directory/);
   store.confirm({ ...dshSave, values: dshValues, revision: 0 });
-  store.confirm({ ...codex, configurationId: codexDraft.configurationId, values: { workspace: state, model: 'codex-selected', effort: 'high', sandbox: 'read-only' } });
+  const codexSave = { ...codex, configurationId: codexDraft.configurationId,
+    values: { workspace: state, model: 'codex-selected', effort: 'high', sandbox: 'read-only' } };
+  assert.throws(() => store.confirm({ ...codexSave, subagentRoute: 'unknown' }), /Choose agent-hub or native/);
+  assert.throws(() => store.confirm({ ...dshSave, values: dshValues, subagentRoute: 'native' }), /Choose agent-hub or native/);
+  store.confirm({ ...codexSave, subagentRoute: 'native' });
+  store.confirm(codexSave);
   assert.equal(store.read(other).status, 'missing');
+  assert.equal(store.read({ ...other, backend: 'codex' }).subagentRoute, 'agent-hub');
   assert.equal(store.read(codex).values.model, 'codex-selected');
 
   let requests = requestStore(state, store);
@@ -38,11 +47,26 @@ test('settings are scoped per chat and backend, and retries use an immutable sna
   assert.equal(requests.resolve({ ...task, requestId: 'two' }).model.model, 'updated');
   assert.equal(requests.resolve(task).model.model, 'original');
   assert.throws(() => requests.resolve({ ...task, prompt: 'different' }), /different arguments/);
-  assert.notEqual(requests.resolve({ ...task, backend: 'codex' }).requestId, first.requestId);
+  const independent = requests.resolve({ ...task, backend: 'codex' });
+  assert.notEqual(independent.requestId, first.requestId);
+  assert.equal(independent.subagentRoute, undefined);
   store = configurationStore(state, defaults);
   requests = requestStore(state, store);
   assert.deepEqual(requests.resolve(task), first);
   assert.equal(store.read(codex).values.effort, 'high');
+  assert.equal(store.read(codex).subagentRoute, 'native');
+  store.confirm({ ...codexSave, subagentRoute: 'agent-hub' });
+  assert.equal(store.read(codex).subagentRoute, 'agent-hub');
+});
+
+test('a saved Codex configuration from before routing defaults to Agent Hub', t => {
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-settings-test-'));
+  t.after(() => fs.rmSync(state, { recursive: true, force: true }));
+  const parent = { conversationId: 'chat-A', backend: 'codex' };
+  const entry = { ...parent, configurationId: 'legacy', revision: 1, status: 'ready', values: { workspace: state } };
+  fs.writeFileSync(path.join(state, 'configurations.json'), JSON.stringify({ [JSON.stringify(['chat-A', 'codex'])]: entry }));
+  const store = configurationStore(state, { workspace: state });
+  assert.deepEqual(store.read(parent), { ...entry, subagentRoute: 'agent-hub' });
 });
 
 test('existing sessions can resume without configuration and keep their original settings', t => {

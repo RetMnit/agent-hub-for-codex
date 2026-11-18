@@ -19,13 +19,16 @@
   <div class="settings-header">
     <div class="tabs" aria-label="执行后端">
       <button type="button" id="backend-dsh" aria-pressed="true">DSH</button>
-      <button type="button" id="backend-codex" aria-pressed="false">独立 Codex</button>
+      <button type="button" id="backend-codex" aria-pressed="false">Codex</button>
     </div>
     <button id="refresh-catalog" type="button">读取可选项</button>
   </div>
   <p id="catalog-status" role="status"></p>
   <form id="settings" hidden>
     <label id="setting-mode">运行方式<select name="mode"><option value="headless">后台</option><option value="desktop">桌面</option></select></label>
+    <label id="setting-subagent-route" hidden>Codex 子代理路由<select name="subagentRoute">
+      <option value="agent-hub">Agent Hub（默认）</option><option value="native">原生 Codex</option>
+    </select></label>
     <label id="setting-location"><span id="location-label">工作区</span><select name="location"></select></label>
     <label id="setting-workspace">自定义目录<input name="workspace" autocomplete="off" placeholder="输入绝对路径"></label>
     <label id="setting-preset">预设<select name="preset"></select></label>

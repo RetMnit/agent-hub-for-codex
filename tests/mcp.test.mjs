@@ -29,7 +29,10 @@ test('MCP handshake, discovery and harmless doctor round-trip', async () => {
   try {
     const init=await call('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'offline-test',version:'1'}});
     assert.equal(init.result.serverInfo.name,'agent-hub');
+    assert.match(init.result.instructions, /call hub_configuration with backend codex and use its subagentRoute/);
+    assert.match(init.result.instructions, /default route is agent-hub/);
     const catalog=await call('tools/list'); assert.equal(catalog.result.tools.length,15);
+    assert.match(catalog.result.tools.find(tool=>tool.name==='hub_configuration').description, /subagentRoute is agent-hub by default/);
     assert.ok(catalog.result.tools.some(tool=>tool.name==='hub_resume'));
     assert.ok(catalog.result.tools.find(tool=>tool.name==='hub_start').inputSchema.required.includes('userAuthorized'));
     assert.ok(catalog.result.tools.some(tool=>tool.name==='hub_configure'));

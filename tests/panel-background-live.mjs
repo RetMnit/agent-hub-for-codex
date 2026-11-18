@@ -139,11 +139,14 @@ try{
   assert.equal((await call('configuration')).values.model.reasoningEffort, 'high');
   await evaluate("document.querySelector('#backend-codex').click()");
   await until(() => available('fake-codex'), 'independent Codex settings in the same window');
+  assert.equal(await evaluate("document.querySelector('[name=subagentRoute]').value"), 'agent-hub');
+  assert.equal(await change('subagentRoute', 'native'), 'native');
   assert.equal(await change('model', 'fake-codex'), 'fake-codex');
   assert.equal(await change('effort', 'xhigh'), 'xhigh');
   await evaluate("document.querySelector('#settings [type=submit]').click()");
   await until(async () => (await call('configuration', {backend:'codex'})).status === 'ready', 'Codex configuration saves from the real form');
   assert.equal((await call('configuration', {backend:'codex'})).values.effort, 'xhigh');
+  assert.equal((await call('configuration', {backend:'codex'})).subagentRoute, 'native');
   await evaluate("document.querySelector('#tab-tasks').click()");
   assert.equal((await findStatusWindow(dashboardUrl,state)).processCount, 1);
   output.bothConfigurationsSaved = true;
@@ -153,7 +156,7 @@ try{
   // activate its target). This suspends page timers/JS like a background tab.
   await cdp.pause();await nativeWindow('minimize');
   assert.equal((await nativeWindow('read')).minimized,true);
-  await delay(7000);assert.equal((await call('list')).panel.connected,false,'render/heartbeat must actually be stale');
+  await until(async () => !(await call('list')).panel.connected, 'render heartbeat expires while the page is frozen', 15000);
   console.log(JSON.stringify({phase:'minimized-and-js-paused',fakeModel:true}));
   const began=Date.now();const first=await call('start',{userAuthorized:true,requestId:'first',prompt:'fake first'});
   assert.equal(first.status,'completed');assert.equal(first.panel.jobsRendered,false);assert.equal(first.panel.renderPending,true);
@@ -169,6 +172,7 @@ try{
   output.frozenDispatches=4;output.duplicateWindows=0;
   // Service restart loses every page receipt. OS ownership must still be enough.
   const previousPid=supervisor.pid;supervisor.kill();await until(()=>supervisor.exitCode!==null||supervisor.signalCode!==null,'isolated supervisor exit');info=await boot();assert.notEqual(info.pid,previousPid);
+  assert.equal((await call('configuration', {backend:'codex'})).subagentRoute, 'native');
   const afterRestart=await call('resume',{userAuthorized:true,mode:'desktop',sessionId:first.sessionId,requestId:'restart',prompt:'fake after restart'});
   assert.equal(afterRestart.status,'completed');assert.equal(afterRestart.panel.jobsRendered,false);assert.equal(afterRestart.panel.launches,0);assert.equal(starts,5);
   assert.equal((await findStatusWindow(dashboardUrl,state)).processCount,1);assert.equal((await nativeWindow('read')).minimized,true);

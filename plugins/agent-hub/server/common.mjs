@@ -5,7 +5,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const VERSION = '0.8.0';
+export const VERSION = '0.8.1';
 export const STATE = path.resolve(process.env.CODEX_AGENT_HUB_STATE_DIR || path.join(os.homedir(), '.codex', 'agent-hub'));
 export function backendOf(params) {
   const backend = params.backend;

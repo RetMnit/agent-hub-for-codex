@@ -6,6 +6,7 @@ import { conversationId } from './records.mjs';
 
 const modes = ['desktop', 'headless'];
 const sandboxes = ['read-only', 'workspace-write', 'danger-full-access'];
+const subagentRoutes = ['agent-hub', 'native'];
 const fields = {
   dsh: ['mode', 'workspace', 'preset', 'model', 'permission'],
   codex: ['workspace', 'model', 'effort', 'sandbox'],
@@ -44,7 +45,11 @@ export function configurationStore(state, defaults) {
   const file = path.join(state, 'configurations.json');
   const entries = fs.existsSync(file) ? readJson(file) : {};
   const keyOf = params => JSON.stringify([conversationId(params), backendOf(params)]);
-  const get = params => entries[keyOf(params)] ?? { conversationId: conversationId(params), backend: backendOf(params), status: 'missing' };
+  const get = params => {
+    const backend = backendOf(params);
+    const entry = entries[keyOf(params)] ?? { conversationId: conversationId(params), backend, status: 'missing' };
+    return backend === 'codex' ? { subagentRoute: 'agent-hub', ...entry } : entry;
+  };
   const read = params => structuredClone(get(params));
   const store = (params, entry) => {
     const key = keyOf(params);
@@ -70,7 +75,12 @@ export function configurationStore(state, defaults) {
       if (params.revision !== undefined && params.revision !== entry.revision) throw new Error('Configuration changed. Reload the saved settings before editing again.');
       const values = select(entry.backend, params.values);
       if (!directory(values.workspace)) throw new Error('Workspace must be an existing absolute directory');
-      return store(params, { ...entry, values, status: 'ready', revision: entry.revision + 1, savedAt: new Date().toISOString() });
+      const subagentRoute = params.subagentRoute ?? entry.subagentRoute;
+      if (params.subagentRoute !== undefined && (entry.backend !== 'codex' || !subagentRoutes.includes(params.subagentRoute))) {
+        throw new Error('Choose agent-hub or native in the Codex settings');
+      }
+      return store(params, { ...entry, ...(entry.backend === 'codex' ? { subagentRoute } : {}),
+        values, status: 'ready', revision: entry.revision + 1, savedAt: new Date().toISOString() });
     },
     resolve(params, operation = 'start') {
       if (params.userAuthorized !== true) throw new Error('Explicit user permission to dispatch through Agent Hub is required');

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { ROOT, STATE, atomic, readJson } from './common.mjs';
 import { loadBridge, loadCodexBridge } from './bridge.mjs';
+import { connectSupervisor } from './client.mjs';
 
 if (process.argv.length > 2) throw new Error('Usage: node <plugin-root>/server/setup.mjs');
 const dsh = await loadBridge().catch(() => null);
@@ -20,4 +21,5 @@ const defaults = { ...dsh?.defaults, ...old.defaults };
 const workspace = path.resolve(process.env.CODEX_AGENT_HUB_WORKSPACE || defaults.workspace || os.homedir());
 if (!fs.statSync(workspace, { throwIfNoEntry: false })?.isDirectory()) throw new Error('Choose an existing workspace directory');
 atomic(settingsPath, { sourceRoot: ROOT, token: old.token || randomBytes(32).toString('hex'), defaults: { ...defaults, workspace } });
+await connectSupervisor({ upgrade: true });
 console.log(JSON.stringify({ configured: true, stateDir: STATE, installed: { dsh: Boolean(dsh), codex: Boolean(codex) } }));

@@ -65,7 +65,9 @@ function createSettings(call) {
     const model = dsh ? values.model && dshModelKey(values.model.provider, values.model.model) : values.model;
     const effort = dsh ? values.model?.reasoningEffort : values.effort;
     if (dsh) field('mode').value = values.mode;
+    else field('subagentRoute').value = state.subagentRoute;
     get('setting-mode').hidden = !dsh;
+    get('setting-subagent-route').hidden = dsh;
     get('setting-preset').hidden = !dsh;
     get('location-label').textContent = dsh ? '工作区' : '项目 / 工作区';
     get('permission-label').textContent = dsh ? '权限' : '沙箱';
@@ -140,7 +142,8 @@ function createSettings(call) {
     if (name === 'location') {
       state.custom = !value;
       if (value) values.workspace = value;
-    } else if (name === 'workspace' || name === 'mode') values[name] = value;
+    } else if (name === 'subagentRoute') state.subagentRoute = value;
+    else if (name === 'workspace' || name === 'mode') values[name] = value;
     else if (name === 'permission') set(dsh ? 'permission' : 'sandbox', value);
     else if (name === 'model') {
       const previous = dsh ? values.model?.reasoningEffort : values.effort;
@@ -178,7 +181,8 @@ function createSettings(call) {
     notice('保存中…');
     const { configurationId, revision } = state.entry;
     try {
-      state.entry = await call('saveConfiguration', { backend: state.backend, configurationId, revision, values: state.values });
+      state.entry = await call('saveConfiguration', { backend: state.backend, configurationId, revision, values: state.values,
+        ...(state.backend === 'codex' ? { subagentRoute: state.subagentRoute } : {}) });
       if (state === current) notice('配置已保存', { temporary: true });
     } catch (error) {
       if (state === current) notice(error.message, { error: true });
@@ -209,6 +213,7 @@ function createSettings(call) {
         state.entry = await state.pending;
         initialWorkspace ??= state.entry.initialWorkspace;
         state.values = structuredClone(state.entry.values);
+        state.subagentRoute = state.entry.subagentRoute ?? 'agent-hub';
       } catch (error) {
         if (state === current) get('catalog-status').textContent = error.message;
         return;
