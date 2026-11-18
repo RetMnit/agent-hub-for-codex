@@ -12,7 +12,7 @@ Agent Hub 在一个本地看板中管理 DSH 和独立 Codex 任务。普通的 
 从 GitHub 的发布标签安装。若已登记本地检出或其他标签，先运行 `codex plugin marketplace remove codex-agent-hub-tools`。CLI 可以使用 Codex Desktop 自带的 `codex.exe`。
 
 ```powershell
-codex plugin marketplace add https://github.com/RetMnit/dsh-subagent.git --ref v0.8.0
+codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.0
 $installed = codex plugin add agent-hub@codex-agent-hub-tools --json | ConvertFrom-Json
 node (Join-Path $installed.installedPath 'server/setup.mjs')
 ```
@@ -47,8 +47,3 @@ node tests/panel-background-live.mjs
 测试使用临时状态和假桥接。指定 `CODEX_TEST_CLI` 会用临时 Codex 配置验证安装及 Windows 缓存刷新。第二条测试命令会短暂显示隔离的 Edge 窗口，验证两种后端的真实表单和窗口恢复。两套测试均无需模型请求。
 
 插件源码位于 `plugins/agent-hub/`。从本地检出安装用于开发验证时，在仓库根目录执行 `codex plugin marketplace add .` 注册源，再按安装命令添加插件。旧版 DSH Subagent 的切换说明见 [迁移说明](docs/migration.md)。
-
-## 贡献者
-
-- [Mnit](https://github.com/RetMnit) 维护项目和发布。
-- OpenAI Codex 参与 Codex 版插件的实现、调试与验收。Codex 端显示名为 **Agent Hub for Codex**。
