@@ -48,13 +48,27 @@ export async function findStatusWindow(url, state) {
   return matchStatusWindows(JSON.parse(stdout.replace(/^\uFEFF/, '') || '[]'), url, state);
 }
 
+export function statusWindowArgs(url, state) {
+  const view = new URL(url);
+  view.searchParams.set('panelWindow', '1');
+  return [
+    '--app=' + view.href,
+    '--user-data-dir=' + panelProfile(url, state),
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-mode',
+    // Keep Edge from signing the chat's local profile into the Windows account.
+    '--disable-features=msImplicitSignin',
+    '--disable-sync',
+  ];
+}
+
 export async function launchStatusWindow(url, state) {
   const candidates = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA]
     .filter(Boolean).map(root => path.join(root, 'Microsoft/Edge/Application/msedge.exe'));
   const executable = candidates.find(file => fs.existsSync(file));
   if (!executable) throw new Error('Microsoft Edge is required to display the automatic task window');
-  const view = new URL(url); view.searchParams.set('panelWindow', '1');
-  const child = spawn(executable, ['--app=' + view.href, '--user-data-dir=' + panelProfile(url, state), '--no-first-run', '--no-default-browser-check', '--disable-background-mode'], {
+  const child = spawn(executable, statusWindowArgs(url, state), {
     detached: true, windowsHide: false, shell: false, stdio: 'ignore',
   });
   await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });

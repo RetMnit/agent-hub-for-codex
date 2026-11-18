@@ -12,7 +12,7 @@ Agent Hub 在一个本地看板中管理 DSH 和独立 Codex 任务。启用插�
 从 GitHub 的发布标签安装。若已登记本地检出或其他标签，先运行 `codex plugin marketplace remove codex-agent-hub-tools`。CLI 可以使用 Codex Desktop 自带的 `codex.exe`。
 
 ```powershell
-codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.2
+codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.3
 $installed = codex plugin add agent-hub@codex-agent-hub-tools --json | ConvertFrom-Json
 node (Join-Path $installed.installedPath 'server/setup.mjs')
 ```

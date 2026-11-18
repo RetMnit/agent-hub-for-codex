@@ -10,7 +10,7 @@ import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {fakeConfig,fakeBridgeState,fakeCodexState} from './fixtures.mjs';
-import {findStatusWindow, panelProfile} from '../plugins/agent-hub/server/panel.mjs';
+import {findStatusWindow, panelProfile, statusWindowArgs} from '../plugins/agent-hub/server/panel.mjs';
 
 if(process.platform!=='win32')throw new Error('Windows acceptance only');
 const run=promisify(execFile), delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -115,11 +115,10 @@ const output={fakeModel:true,manualWindowRecovery:false};
 try{
   info=await boot();
   dashboardUrl = info.url + '/?conversationId=' + encodeURIComponent(conversationId) + '#' + token;profile=panelProfile(dashboardUrl,state);
-  const app=new URL(dashboardUrl);app.searchParams.set('panelWindow','1');
   const executable=[process.env['ProgramFiles(x86)'],process.env.ProgramFiles,process.env.LOCALAPPDATA].filter(Boolean)
     .map(base=>path.join(base,'Microsoft/Edge/Application/msedge.exe')).find(file=>fs.existsSync(file));assert.ok(executable);
   // Debugging is enabled only for this disposable browser, never production.
-  browser=spawn(executable,['--app='+app.href,'--user-data-dir='+profile,'--remote-debugging-port=0','--no-first-run','--no-default-browser-check','--disable-background-mode'],{windowsHide:false,stdio:'ignore'});
+  browser=spawn(executable,[...statusWindowArgs(dashboardUrl,state),'--remote-debugging-port=0'],{windowsHide:false,stdio:'ignore'});
   await until(async()=> (await call('list')).panel.connected,'initial real page receipt');
   cdp=await connectDebugger();
   const evaluate = async expression => {
@@ -207,6 +206,13 @@ try{
   const inspected=await cdp.request('Runtime.evaluate',{expression:"JSON.stringify(Array.from(document.querySelectorAll('#jobs article')).map(e=>({status:e.dataset.status,answer:e.querySelector('.result')?.textContent,effort:Array.from(e.querySelectorAll('.details b')).find(node=>node.textContent==='推理档位')?.nextElementSibling.textContent})))",returnByValue:true});
   const cards=JSON.parse(inspected.result.value);assert.equal(cards.length,4);assert.ok(cards.every(card=>card.status==='completed'&&card.answer.startsWith('fake-answer-')));
   assert.equal(cards.filter(card=>card.effort==='high').length,3);
+  const localState = JSON.parse(fs.readFileSync(path.join(profile, 'Local State'), 'utf8'));
+  const preferences = JSON.parse(fs.readFileSync(path.join(profile, 'Default', 'Preferences'), 'utf8'));
+  const edgeProfile = localState.profile.info_cache.Default;
+  assert.ok(edgeProfile, 'the isolated Edge profile exists');
+  assert.ok(!edgeProfile.user_name && !edgeProfile.gaia_id && !edgeProfile.is_consented_primary_account, 'Edge did not sign in the panel profile');
+  assert.equal(preferences.account_info?.length ?? 0, 0);
+  output.edgeProfileSignedIn = false;
   output.foregroundCaughtUp=true;output.cards=cards.length;output.passed=true;
   console.log(JSON.stringify(output));
   if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(output,null,2)+'\n');
