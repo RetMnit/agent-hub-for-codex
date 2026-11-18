@@ -5,14 +5,20 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const STATE = path.resolve(process.env.CODEX_DSH_STATE_DIR || path.join(os.homedir(), '.codex', 'dsh-subagent'));
+export const VERSION = '0.8.0';
+export const STATE = path.resolve(process.env.CODEX_AGENT_HUB_STATE_DIR || path.join(os.homedir(), '.codex', 'agent-hub'));
+export function backendOf(params) {
+  const backend = params.backend;
+  if (backend !== 'dsh' && backend !== 'codex') throw new Error('Choose dsh or codex');
+  return backend;
+}
 // Windows cannot rename a cache directory held as a process working directory.
 export function enterStateDirectory() {
   fs.mkdirSync(STATE, { recursive: true });
   process.chdir(STATE);
 }
 const identity = createHash('sha256').update(path.resolve(STATE).toLowerCase()).digest('hex').slice(0, 16);
-export const supervisorLock = process.platform === 'win32' ? '\\\\.\\pipe\\codex-dsh-subagent-' + identity : path.join(STATE, 'supervisor.sock');
+export const supervisorLock = process.platform === 'win32' ? '\\\\.\\pipe\\codex-agent-hub-' + identity : path.join(STATE, 'supervisor.sock');
 export const terminal = status => ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
 export const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 export const config = () => readJson(path.join(STATE, 'config.json'));

@@ -1,0 +1,17 @@
+{
+  "name": "agent-hub",
+  "version": "0.8.0",
+  "description": "Delegate local tasks to DSH and independent Codex threads with saved settings and a shared task panel.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "Agent Hub for Codex",
+    "shortDescription": "DSH 与独立 Codex 任务委派",
+    "developerName": "Mnit",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "defaultPrompt": "打开 Agent Hub 的 DSH 设置。",
+    "logo": "./assets/icon.svg"
+  }
+}

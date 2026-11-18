@@ -9,29 +9,51 @@ import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {fakeConfig,fakeBridgeState} from './fixtures.mjs';
-import {findStatusWindow, panelProfile} from '../plugins/dsh-subagent/server/panel.mjs';
+import {fakeConfig,fakeBridgeState,fakeCodexState} from './fixtures.mjs';
+import {findStatusWindow, panelProfile} from '../plugins/agent-hub/server/panel.mjs';
 
 if(process.platform!=='win32')throw new Error('Windows acceptance only');
 const run=promisify(execFile), delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-background-test-'));
 const state=path.join(root,'state');fs.mkdirSync(state);
 const token=randomUUID();
-const jobs=[];let starts=0;let supervisor;let browser;let cdp;
+const jobs=[];const codexJobs=[];let starts=0;let supervisor;let browser;let cdp;
 const conversationId='background-acceptance-'+randomUUID();
 const server=http.createServer(async(request,response)=>{
   let call;
   try{
     let body='';for await(const chunk of request)body+=chunk;call=JSON.parse(body);let result;
-    if(['start','status','events','list'].includes(call.method))assert.equal(call.params.client,'codex');
+    if (call.mode === 'codex') {
+      assert.equal(call.params.client, 'codex-agent-hub');
+      if (call.method === 'catalog') result = {
+        projects: [{ root, name: 'Codex test project' }],
+        models: [{ id: 'fake-codex', name: 'Codex test model', efforts: ['xhigh'] }],
+      };
+      else if (call.method === 'start') {
+        result = { jobId: 'worker-' + randomUUID(), requestId: call.params.requestId, sessionId: 'independent-' + randomUUID(),
+          status: 'completed', createdAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+          result: 'fake-answer-codex', settings: { workspace: root, model: call.params.model, effort: call.params.effort }, activity: [] };
+        codexJobs.push(result);
+      } else { await delay(100); result = { cursor: codexJobs.length, jobs: codexJobs }; }
+      response.end(JSON.stringify({ result }));
+      return;
+    }
+    if(['start','status','events','list'].includes(call.method))assert.equal(call.params.client,'codex-agent-hub');
     if(call.method==='doctor')result={mode:call.mode,protocolVersion:2,instanceId:'fake-host',capabilities:['concurrent-sessions']};
     else if(call.method==='start'){
       result=jobs.find(job=>job.requestId===call.params.requestId);
-      if(!result){starts++;result={jobId:'job-'+randomUUID(),client:'codex',meta:call.params.meta,sessionId:call.params.sessionId||'dsh-bridge-'+randomUUID(),requestId:call.params.requestId,
+      if(!result){starts++;result={jobId:'job-'+randomUUID(),client:'codex-agent-hub',meta:call.params.meta,sessionId:call.params.sessionId||'dsh-bridge-'+randomUUID(),requestId:call.params.requestId,
         mode:call.mode,status:'completed',createdAt:new Date().toISOString(),finishedAt:new Date().toISOString(),
-        result:'fake-answer-'+starts,events:[],requested:{workspace:root}};jobs.push(result)}
+        result:'fake-answer-'+starts,events:[],requested:{workspace:root},
+        effective:{workspace:root,model:{provider:'test-provider',model:call.mode+'-model'}},
+        actualModel:{provider:'test-provider',model:call.mode+'-model',reasoningEffort:'high'}};jobs.push(result)}
     }else if(call.method==='status')result=jobs.find(job=>job.jobId===call.params.jobId);
     else if(call.method==='sessions')result=[];
+    else if(call.method==='catalog')result={ workspaces: [{path:root,title:'Test workspace'}],
+      presets:{presets:[{ id:'test-preset',name:'Test preset' }]},
+      models:{default:{provider:'test-provider',model:call.mode+'-model'},groups:[{id:'test-provider',name:'Test provider',models:[{
+        id: call.mode + '-model',name:'Test model',reasoning:{efforts:[{id:'high'}],defaultEffort:'high'}
+      }]}]} };
     else{await delay(100);result={instanceId:'fake-host',cursor:jobs.length,jobs:jobs.filter(job=>job.mode===call.mode)}}
     response.end(JSON.stringify({result}));
   }catch(error){response.end(JSON.stringify({error:{message:error.message}}))}
@@ -41,8 +63,8 @@ const config=fakeConfig(state,{endpoint:'http://127.0.0.1:'+server.address().por
 fs.writeFileSync(path.join(state,'config.json'),JSON.stringify({...config,token,defaults:{workspace:root}}));
 async function boot(){
   const before=fs.existsSync(path.join(state,'supervisor.json'))?JSON.parse(fs.readFileSync(path.join(state,'supervisor.json'))).instanceId:null;
-  supervisor=spawn(process.execPath,[fileURLToPath(new URL('../plugins/dsh-subagent/server/supervisor.mjs',import.meta.url))],{
-    env:{...process.env,CODEX_DSH_STATE_DIR:state,DSH_BRIDGE_STATE_DIR:fakeBridgeState(state)},windowsHide:true,stdio:'ignore'});
+  supervisor=spawn(process.execPath,[fileURLToPath(new URL('../plugins/agent-hub/server/supervisor.mjs',import.meta.url))],{
+    env:{...process.env,CODEX_AGENT_HUB_STATE_DIR:state,DSH_BRIDGE_STATE_DIR:fakeBridgeState(state),CODEX_BRIDGE_STATE_DIR:fakeCodexState(root, 'http://127.0.0.1:'+server.address().port)},windowsHide:true,stdio:'ignore'});
   for(let i=0;i<200;i++){
     try{const info=JSON.parse(fs.readFileSync(path.join(state,'supervisor.json')));if(info.instanceId!==before)return info}catch{}
     await delay(25);
@@ -52,7 +74,7 @@ async function boot(){
 let info;let dashboardUrl;let profile;
 async function call(method,params={}){
   const response=await fetch(info.url+'/api',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},
-    body:JSON.stringify({method,params:{conversationId,...params}}),signal:AbortSignal.timeout(10000)});
+    body:JSON.stringify({method,params:{conversationId,backend:'dsh',...params}}),signal:AbortSignal.timeout(10000)});
   const reply=await response.json();if(reply.error)throw new Error(reply.error.message);return reply.result;
 }
 async function until(fn,label,timeout=10000){
@@ -86,21 +108,52 @@ async function connectDebugger(){
 }
 const output={fakeModel:true,manualWindowRecovery:false};
 try{
-  info=await boot();const entry=await call('configure');await call('saveConfiguration',{configurationId:entry.configurationId,values:{mode:'desktop',workspace:root}});
-  dashboardUrl=(await call('doctor')).dashboardUrl;profile=panelProfile(dashboardUrl,state);
+  info=await boot();
+  dashboardUrl = info.url + '/?conversationId=' + encodeURIComponent(conversationId) + '#' + token;profile=panelProfile(dashboardUrl,state);
   const app=new URL(dashboardUrl);app.searchParams.set('panelWindow','1');
   const executable=[process.env['ProgramFiles(x86)'],process.env.ProgramFiles,process.env.LOCALAPPDATA].filter(Boolean)
     .map(base=>path.join(base,'Microsoft/Edge/Application/msedge.exe')).find(file=>fs.existsSync(file));assert.ok(executable);
   // Debugging is enabled only for this disposable browser, never production.
   browser=spawn(executable,['--app='+app.href,'--user-data-dir='+profile,'--remote-debugging-port=0','--no-first-run','--no-default-browser-check','--disable-background-mode'],{windowsHide:false,stdio:'ignore'});
-  await until(async()=> (await call('doctor')).panel.connected,'initial real page receipt');
-  cdp=await connectDebugger();await nativeWindow('minimize');
+  await until(async()=> (await call('list')).panel.connected,'initial real page receipt');
+  cdp=await connectDebugger();
+  const evaluate = async expression => {
+    const result = await cdp.request('Runtime.evaluate', { expression, returnByValue: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    return result.result.value;
+  };
+  const change = (name, value) => evaluate("(() => { const input = document.querySelector('[name=" + name + "]'); input.value = " +
+    JSON.stringify(value) + "; input.dispatchEvent(new Event('change', {bubbles:true})); return input.value; })()");
+  const available = value => evaluate("Array.from(document.querySelector('[name=model]').options).some(option => option.value === " + JSON.stringify(value) + ")");
+  await call('configure', { workspace: root });
+  await until(() => available('["test-provider","headless-model"]'), 'headless DSH options render in existing Edge window');
+  await change('mode', 'desktop');
+  const desktopModel = '["test-provider","desktop-model"]';
+  await until(() => available(desktopModel), 'switching mode reloads the DSH catalog');
+  assert.equal(await evaluate("document.querySelector('[name=model]').value"), '');
+  assert.equal(await evaluate("document.querySelector('[name=effort]').disabled"), false);
+  assert.equal(await change('effort', 'high'), 'high');
+  assert.equal(await evaluate("document.querySelector('[name=model]').value"), desktopModel);
+  await evaluate("document.querySelector('#settings [type=submit]').click()");
+  await until(async () => (await call('configuration')).status === 'ready', 'DSH configuration saves from the real form');
+  assert.equal((await call('configuration')).values.model.reasoningEffort, 'high');
+  await evaluate("document.querySelector('#backend-codex').click()");
+  await until(() => available('fake-codex'), 'independent Codex settings in the same window');
+  assert.equal(await change('model', 'fake-codex'), 'fake-codex');
+  assert.equal(await change('effort', 'xhigh'), 'xhigh');
+  await evaluate("document.querySelector('#settings [type=submit]').click()");
+  await until(async () => (await call('configuration', {backend:'codex'})).status === 'ready', 'Codex configuration saves from the real form');
+  assert.equal((await call('configuration', {backend:'codex'})).values.effort, 'xhigh');
+  await evaluate("document.querySelector('#tab-tasks').click()");
+  assert.equal((await findStatusWindow(dashboardUrl,state)).processCount, 1);
+  output.bothConfigurationsSaved = true;
+  await nativeWindow('minimize');
   assert.equal((await nativeWindow('read')).minimized,true);
   // Freeze page lifecycle rather than pausing in the debugger (which can
   // activate its target). This suspends page timers/JS like a background tab.
   await cdp.pause();await nativeWindow('minimize');
   assert.equal((await nativeWindow('read')).minimized,true);
-  await delay(7000);assert.equal((await call('doctor')).panel.connected,false,'render/heartbeat must actually be stale');
+  await delay(7000);assert.equal((await call('list')).panel.connected,false,'render/heartbeat must actually be stale');
   console.log(JSON.stringify({phase:'minimized-and-js-paused',fakeModel:true}));
   const began=Date.now();const first=await call('start',{userAuthorized:true,requestId:'first',prompt:'fake first'});
   assert.equal(first.status,'completed');assert.equal(first.panel.jobsRendered,false);assert.equal(first.panel.renderPending,true);
@@ -119,15 +172,21 @@ try{
   const afterRestart=await call('resume',{userAuthorized:true,mode:'desktop',sessionId:first.sessionId,requestId:'restart',prompt:'fake after restart'});
   assert.equal(afterRestart.status,'completed');assert.equal(afterRestart.panel.jobsRendered,false);assert.equal(afterRestart.panel.launches,0);assert.equal(starts,5);
   assert.equal((await findStatusWindow(dashboardUrl,state)).processCount,1);assert.equal((await nativeWindow('read')).minimized,true);
-  output.restartAdoption=true;output.fakeDispatches=starts;
+  const independent = await call('start', { backend:'codex', userAuthorized:true, requestId:'independent', prompt:'fake independent task' });
+  assert.equal(independent.backend, 'codex');
+  assert.equal(independent.status, 'completed');
+  assert.equal(independent.panel.launches, 0);
+  assert.equal((await findStatusWindow(dashboardUrl,state)).processCount, 1);
+  output.restartAdoption=true;output.fakeDispatches=starts+codexJobs.length;
   // All tasks completed before this test restores its window to verify catch-up.
   await cdp.resume();await nativeWindow('restore');
   await until(async()=>{
-    const panel=(await call('doctor')).panel;
-    return jobs.every(job=>panel.renderedJobs.some(item=>item.jobId===job.jobId&&item.status==='completed'&&item.hasResult));
+    const panel=(await call('list')).panel;
+    return [...jobs, ...codexJobs.map(job => ({...job, jobId:'codex:'+job.jobId}))].every(job=>panel.renderedJobs.some(item=>item.jobId===job.jobId&&item.status==='completed'&&item.hasResult));
   },'real page catches up to every completed job after foreground');
-  const inspected=await cdp.request('Runtime.evaluate',{expression:"JSON.stringify(Array.from(document.querySelectorAll('#jobs article')).map(e=>({status:e.dataset.status,answer:e.querySelector('.result')?.textContent})))",returnByValue:true});
-  const cards=JSON.parse(inspected.result.value);assert.equal(cards.length,3);assert.ok(cards.every(card=>card.status==='completed'&&card.answer.startsWith('fake-answer-')));
+  const inspected=await cdp.request('Runtime.evaluate',{expression:"JSON.stringify(Array.from(document.querySelectorAll('#jobs article')).map(e=>({status:e.dataset.status,answer:e.querySelector('.result')?.textContent,effort:Array.from(e.querySelectorAll('.details b')).find(node=>node.textContent==='推理档位')?.nextElementSibling.textContent})))",returnByValue:true});
+  const cards=JSON.parse(inspected.result.value);assert.equal(cards.length,4);assert.ok(cards.every(card=>card.status==='completed'&&card.answer.startsWith('fake-answer-')));
+  assert.equal(cards.filter(card=>card.effort==='high').length,3);
   output.foregroundCaughtUp=true;output.cards=cards.length;output.passed=true;
   console.log(JSON.stringify(output));
   if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(output,null,2)+'\n');

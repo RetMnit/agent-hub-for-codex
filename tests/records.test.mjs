@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {runtimeRecords,conversationId} from '../plugins/dsh-subagent/server/records.mjs';
-import {requestStore} from '../plugins/dsh-subagent/server/requests.mjs';
-import {groupSubagents} from '../plugins/dsh-subagent/server/subagents.mjs';
+import {runtimeRecords,conversationId} from '../plugins/agent-hub/server/records.mjs';
+import {requestStore} from '../plugins/agent-hub/server/requests.mjs';
+import {groupSubagents} from '../plugins/agent-hub/server/subagents.mjs';
 
 const temporary=()=>fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-records-test-'));
 const remove=state=>{assert.ok(path.resolve(state).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(state).startsWith('codex-dsh-records-test-'));fs.rmSync(state,{recursive:true,force:true})};
@@ -16,7 +16,7 @@ const makeJob=(conversationId,status='completed',age=0)=>({jobId:'job-'+randomUU
 test('resume preparation updates the same subagent immediately, restores its target after restart, and rejects stale progress',()=>{
   const state=temporary();try{
     const configs={resolve:params=>params};let requests=requestStore(state,configs);
-    const selected=requests.resolve({conversationId:'chat-A',requestId:'resume',prompt:'continue',userAuthorized:true,mode:'desktop',sessionId:'original'},'resume');
+    const selected=requests.resolve({conversationId:'chat-A',backend:'dsh',requestId:'resume',prompt:'continue',userAuthorized:true,mode:'desktop',sessionId:'original'},'resume');
     requests=requestStore(state,configs);assert.equal(requests.targetOf(selected.requestId).sessionId,'original');
     const old={...makeJob('chat-A','completed',1000),sessionId:'original',result:'old'};
     const jobs=new Map([[old.jobId,old]]);const records=runtimeRecords(state,jobs,requests);
@@ -52,14 +52,16 @@ test('retention keeps 100 completed records per conversation, removes records ol
   }finally{remove(state)}
 });
 
-test('record ownership survives restart and may be recovered from an accepted request without guessing legacy ownership',()=>{
+test('job ownership is recovered from a durable dispatch request after restart',()=>{
   const state=temporary();try{
-    const job=makeJob(undefined);const jobs=new Map([[job.jobId,job]]);
-    let records=runtimeRecords(state,jobs,{forget(){}});assert.equal(records.owns(job,'chat-A'),false);
-    records.assign(job,'chat-A');records=runtimeRecords(state,jobs,{forget(){}});
-    assert.equal(records.decorate(job).conversationId,'chat-A');assert.equal(records.owns(job,'chat-B'),false);
-    assert.throws(()=>records.assign(job,'chat-B'),/another Codex conversation/);
-    const orphan=makeJob(undefined);const recovered=runtimeRecords(state,jobs,{forget(){},conversationOf:id=>id===orphan.requestId?'chat-B':undefined});assert.equal(recovered.decorate(orphan).conversationId,'chat-B');
+    let requests = requestStore(state, { resolve: params => params });
+    const task = requests.resolve({ backend: 'codex', conversationId: 'chat-A', userAuthorized: true, requestId: 'task', prompt: 'continue' });
+    const job = { ...makeJob(undefined), backend: 'codex', requestId: task.requestId };
+    requests = requestStore(state, { resolve: params => params });
+    const records = runtimeRecords(state, new Map(), requests);
+    assert.equal(records.decorate(job).conversationId, 'chat-A');
+    assert.equal(records.owns(job, 'chat-B'), false);
+    assert.equal(records.owns({ ...job, requestId: 'unknown' }, 'chat-A'), false);
     assert.throws(()=>conversationId({}),/current Codex thread/);
   }finally{remove(state)}
 });
@@ -67,11 +69,11 @@ test('record ownership survives restart and may be recovered from an accepted re
 test('cleanup leaves a retry tombstone rather than executing a cleaned request again, and request IDs are isolated by conversation',()=>{
   const state=temporary();try{
     const config={resolve:params=>({requestId:params.requestId,prompt:params.prompt,mode:'desktop'})};let requests=requestStore(state,config);
-    const params={conversationId:'chat-A',userAuthorized:true,requestId:'same',prompt:'hello'};
+    const params={conversationId:'chat-A',backend:'dsh',userAuthorized:true,requestId:'same',prompt:'hello'};
     const a=requests.resolve(params);const b=requests.resolve({...params,conversationId:'chat-B'});assert.notEqual(a.requestId,b.requestId);
     requests.forget(a.requestId);requests=requestStore(state,config);
     assert.throws(()=>requests.resolve(params),/already cleaned/);assert.equal(requests.resolve({...params,conversationId:'chat-B'}).prompt,'hello');
-    const stored=JSON.parse(fs.readFileSync(path.join(state,'dispatch-requests.json'),'utf8'));const marker=Object.values(stored).find(entry=>entry.expired);assert.deepEqual(Object.keys(marker).sort(),['expired','signature']);
+    const stored=JSON.parse(fs.readFileSync(path.join(state,'dispatch-requests.json'),'utf8'));const marker=Object.values(stored).find(entry=>!entry.selected);assert.deepEqual(Object.keys(marker).sort(),['signature']);
   }finally{remove(state)}
 });
 

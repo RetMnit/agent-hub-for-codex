@@ -1,5 +1,11 @@
 # 验证记录
 
+- 2026-11-18 从本地 marketplace 安装并启用 Agent Hub 0.8.0。安装副本的 MCP 探测到 15 个工具。用当前工作区和只读设置分别运行一条真实 DSH 后台任务与一条独立 Codex 任务，结果为 `DSH_OK 42` 和 `CODEX_OK 42`。同一个 Edge 看板收到两条完成结果。随后卸载旧 DSH Subagent，移除其 marketplace，并复核 Agent Hub 仍已启用。
+
+- 发布前用实际 DSH 目录核对默认模型的四个推理档位，并确认已完成的 DSH 验收任务在实际请求里记录了 `high`。修正后 34 项回归和真实 Edge 窗口的假桥接验收均通过，覆盖从默认模型直接选档位以及看板显示实际档位。
+
+- Agent Hub 0.8.0：Windows 34 项隔离回归全部通过，包含真实 CLI 安装、MCP 存活时同版本缓存刷新、双后端派发和续接、聊天隔离、设置快照与模型档位联动。真实 Edge 隔离验收已在同一窗口保存两种设置。最小化并冻结页面后完成任务，服务重启复用原窗口，恢复前台后显示四张卡片和六轮结果。模型请求为零。当前 Windows 本地 stdio MCP Apps 的原生侧栏尚待验证。
+
 - 0.7.4（2026-11-06）：插件运行文件迁入 `plugins/dsh-subagent/`，marketplace 不再复制整个仓库。两份 MCP 配置移除缓存 cwd；MCP 与 supervisor 主入口进入绝对状态目录，后台 supervisor 的 spawn 也显式指定状态 cwd。设置 `CODEX_TEST_CLI` 后运行 `npm.cmd test`，34 项通过，失败/跳过均为 0。新增 Windows 回归使用独立 CODEX_HOME、本地 marketplace 和假公共客户端，检查安装副本无 `.git`/测试目录；从缓存 cwd 启动真实 MCP，握手与 doctor 启动 supervisor 后，确认两个进程已使用缓存外的状态目录，在二者保持存活时再次安装同版本成功，后续 ping/doctor 仍可用且 supervisor PID 不变。原有 MCP/supervisor 测试清理改为等待自己的子进程退出。未启动真实 DSH 或调用 DSH 模型；正式 GitHub 安装和最小 codex exec 的机器验收另行记录，不将发布前本地回归当作正式安装验收。
 
 - 0.7.3（2026-11-04）：公共安装回执默认改为 `~/.dsh-bridge/install.json`，插件状态默认改为 `~/.codex/dsh-subagent`，保留两个环境变量覆盖入口。发布前重新执行 `npm.cmd test`，33 项隔离回归全部通过，失败和跳过均为 0；临时用户目录模拟两种 AppData 宿主，验证默认状态与 supervisor 锁一致、公共客户端可加载，以及环境变量优先。setup 已从本机新回执完成只读运行时检查，并初始化新插件状态。用户已在 Codex Desktop 完整实测参数表、并行任务、续接、状态窗口和会话隔离，均正常。包、两份插件清单、MCP 和 supervisor 版本一致；正式安装固定 GitHub `v0.7.3` 标签，依赖公共 dsh-bridge `v0.4.0`，安装步骤见 README。本次发布过程未启动 DSH 任务或修改公共桥接；未自动迁移旧状态，未运行跨 MSIX 宿主实机对照或可选 Edge 冻结验收。

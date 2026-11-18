@@ -19,3 +19,15 @@ export function connect({state}) {
     focusDesktop(){fs.appendFileSync(path.join(state,'calls.jsonl'),JSON.stringify({method:'focusDesktop'})+'\n')},
   };
 }
+
+export async function connectCodex({ state, start = true }) {
+  const { endpoint } = JSON.parse(fs.readFileSync(path.join(state, 'fake.json'), 'utf8'));
+  return {
+    async call(method, params) {
+      const body = JSON.stringify({ mode: 'codex', method, params, options: { start } });
+      const reply = await (await fetch(endpoint, { method: 'POST', body })).json();
+      if (reply.error) throw Object.assign(new Error(reply.error.message), { code: reply.error.code });
+      return reply.result;
+    },
+  };
+}

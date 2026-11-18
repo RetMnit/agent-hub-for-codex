@@ -3,61 +3,60 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {configurationStore} from '../plugins/dsh-subagent/server/configurations.mjs';
-import {requestStore} from '../plugins/dsh-subagent/server/requests.mjs';
+import { configurationStore } from '../plugins/agent-hub/server/configurations.mjs';
+import { requestStore } from '../plugins/agent-hub/server/requests.mjs';
 
-test('each Codex conversation has one saved configuration; edits apply automatically while retries keep their snapshots', () => {
-  const state=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-configuration-test-'));
-  try {
-    let store=configurationStore(state,{workspace:state,permission:'danger-full-access'});
-    assert.equal(store.read('chat-A').status,'missing');
-    const entry=store.create({conversationId:'chat-A'});
-    const params={conversationId:'chat-A',prompt:'fake task',requestId:'task-1',userAuthorized:true};
-    assert.throws(()=>store.resolve({...params,userAuthorized:false}),/Explicit user permission/);
-    assert.throws(()=>store.resolve(params),/Save this Codex conversation/);
-    store.confirm('chat-A',entry.configurationId,{...entry.values,model:{provider:'fake',model:'chosen'}});
-    const revision=store.read('chat-A').revision;
-    const first=store.resolve(params),second=store.resolve({...params,requestId:'task-2',prompt:'another task'});
-    assert.equal(first.configurationId,second.configurationId);assert.equal(first.sessionId,undefined);assert.notEqual(first.requestId,second.requestId);
-    assert.equal(store.read('chat-A').revision,revision);assert.equal(store.create({conversationId:'chat-A'}).configurationId,entry.configurationId);
-    assert.throws(()=>store.create({conversationId:'chat-A',createNew:true}),/without configuration overrides/);
-    assert.throws(()=>store.resolve({...params,configurationId:entry.configurationId}),/omit configurationId/);
-    assert.throws(()=>store.resolve({...params,model:{provider:'fake',model:'other'}}),/parameter form/);
-    let requests=requestStore(state,store);const snapshot=requests.resolve(params);
-    store.confirm('chat-A',entry.configurationId,{...entry.values,model:{provider:'fake',model:'changed'}});
-    assert.equal(store.read('chat-A').revision,revision+1);assert.equal(requests.resolve(params).model.model,'chosen');
-    assert.equal(requests.resolve({...params,requestId:'task-3'}).model.model,'changed');
-    assert.throws(()=>requests.resolve({...params,prompt:'other'}),/different arguments/);
-    store=configurationStore(state,{workspace:state,permission:'danger-full-access'});requests=requestStore(state,store);assert.deepEqual(requests.resolve(params),snapshot);
-    const resume=store.resolve({...params,mode:'desktop',sessionId:'existing'},'resume');
-    assert.equal(resume.sessionId,'existing');assert.equal(resume.configurationId,entry.configurationId);
-    for(const key of ['workspace','preset','permission','model'])assert.equal(resume[key],undefined);
-    const another={conversationId:'chat-B',prompt:'only resume',requestId:'first',userAuthorized:true,mode:'desktop',sessionId:'existing'};
-    assert.equal(store.read('chat-B').status,'missing');assert.throws(()=>store.resolve(another,'resume'),/Save this Codex conversation/);
-    const b=store.create({conversationId:'chat-B'});assert.notEqual(b.configurationId,entry.configurationId);
-    assert.equal(b.values.model,undefined);assert.throws(()=>store.confirm('chat-B',entry.configurationId,b.values),/Unknown configuration/);
-    store.confirm('chat-B',b.configurationId,b.values);assert.equal(store.resolve(another,'resume').sessionId,'existing');
-    assert.throws(()=>store.confirm('chat-A',entry.configurationId,{...entry.values,sessionId:'extra'}),/Unknown configuration parameter/);
-    assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.join(state,'configurations.json'))).conversations).length,2);
-  } finally {
-    assert.ok(path.resolve(state).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(state).startsWith('codex-dsh-configuration-test-'));
-    fs.rmSync(state,{recursive:true,force:true});
-  }
+test('settings are scoped per chat and backend, and retries use an immutable snapshot', t => {
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-settings-test-'));
+  t.after(() => fs.rmSync(state, { recursive: true, force: true }));
+  const defaults = { workspace: state };
+  let store = configurationStore(state, defaults);
+  const parent = { conversationId: 'chat-A', backend: 'dsh' };
+  const codex = { ...parent, backend: 'codex' };
+  const other = { ...parent, conversationId: 'chat-B' };
+  const task = { ...parent, prompt: 'fake task', requestId: 'one', userAuthorized: true };
+  assert.equal(store.read(parent).status, 'missing');
+  assert.throws(() => store.resolve(task), /Save this Codex conversation/);
+  assert.throws(() => store.resolve({ ...task, userAuthorized: false }), /Explicit user permission/);
+  const dshDraft = store.create(parent);
+  const codexDraft = store.create({ ...codex, workspace: state });
+  assert.equal(codexDraft.initialWorkspace, state);
+  assert.notEqual(dshDraft.configurationId, codexDraft.configurationId);
+  const dshSave = { ...parent, configurationId: dshDraft.configurationId };
+  const dshValues = { ...dshDraft.values, model: { provider: 'fake', model: 'original' } };
+  assert.throws(() => store.confirm({ ...dshSave, backend: 'codex', values: dshValues }), /Unknown configuration/);
+  assert.throws(() => store.confirm({ ...dshSave, values: { ...dshValues, workspace: 'relative' } }), /existing absolute directory/);
+  store.confirm({ ...dshSave, values: dshValues, revision: 0 });
+  store.confirm({ ...codex, configurationId: codexDraft.configurationId, values: { workspace: state, model: 'codex-selected', effort: 'high', sandbox: 'read-only' } });
+  assert.equal(store.read(other).status, 'missing');
+  assert.equal(store.read(codex).values.model, 'codex-selected');
+
+  let requests = requestStore(state, store);
+  const first = requests.resolve(task);
+  assert.throws(() => store.confirm({ ...dshSave, values: dshValues, revision: 0 }), /Configuration changed/);
+  store.confirm({ ...dshSave, values: { ...dshValues, model: { provider: 'fake', model: 'updated' } }, revision: 1 });
+  assert.equal(requests.resolve({ ...task, requestId: 'two' }).model.model, 'updated');
+  assert.equal(requests.resolve(task).model.model, 'original');
+  assert.throws(() => requests.resolve({ ...task, prompt: 'different' }), /different arguments/);
+  assert.notEqual(requests.resolve({ ...task, backend: 'codex' }).requestId, first.requestId);
+  store = configurationStore(state, defaults);
+  requests = requestStore(state, store);
+  assert.deepEqual(requests.resolve(task), first);
+  assert.equal(store.read(codex).values.effort, 'high');
 });
 
-test('legacy global configurations are backed up and preserved but never adopted by a new Codex conversation', () => {
-  const state=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-configuration-test-'));
-  try {
-    const configurationId='old-config';const values={mode:'desktop',workspace:state,permission:'danger-full-access',open:true};
-    const legacy={schemaVersion:2,defaultConfigurationId:configurationId,configurations:{[configurationId]:{configurationId,status:'ready',values}}};
-    fs.writeFileSync(path.join(state,'configurations.json'),JSON.stringify(legacy));
-    const store=configurationStore(state,{workspace:state,permission:'danger-full-access'});assert.equal(store.read('chat-A').status,'missing');
-    assert.throws(()=>store.resolve({conversationId:'chat-A',prompt:'new task',requestId:'new-request',userAuthorized:true}),/Save this Codex conversation/);
-    assert.equal(fs.readdirSync(path.join(state,'backups')).length,1);
-    const saved=JSON.parse(fs.readFileSync(path.join(state,'configurations.json')));assert.equal(saved.schemaVersion,3);assert.deepEqual(saved.legacyConfigurations,legacy.configurations);
-    const first=store.create({conversationId:'chat-A'});assert.equal(first.status,'draft');assert.notEqual(first.configurationId,configurationId);assert.equal(first.values.mode,'headless');
-  } finally {
-    assert.ok(path.resolve(state).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(state).startsWith('codex-dsh-configuration-test-'));
-    fs.rmSync(state,{recursive:true,force:true});
+test('existing sessions can resume without configuration and keep their original settings', t => {
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-settings-test-'));
+  t.after(() => fs.rmSync(state, { recursive: true, force: true }));
+  const store = configurationStore(state, { workspace: state });
+  const requests = requestStore(state, store);
+  const base = { conversationId: 'chat-A', requestId: 'resume', prompt: 'continue', userAuthorized: true, sessionId: 'existing' };
+  assert.throws(() => requests.resolve({ ...base, backend: 'dsh' }, 'resume'), /original|mode/);
+  for (const backend of ['dsh', 'codex']) {
+    const mode = backend === 'dsh' ? { mode: 'desktop' } : {};
+    assert.equal(store.read({ ...base, backend }).status, 'missing');
+    const resume = requests.resolve({ ...base, backend, ...mode }, 'resume');
+    assert.equal(resume.sessionId, 'existing');
+    for (const key of ['workspace', 'preset', 'permission', 'model', 'sandbox', 'configurationId']) assert.equal(resume[key], undefined);
   }
 });

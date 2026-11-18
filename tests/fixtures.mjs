@@ -13,3 +13,14 @@ export function fakeConfig(root, overrides = {}) {
   fs.writeFileSync(path.join(runtimeRoot,'lib/client.mjs'),'export { connect } from '+JSON.stringify(new URL('./fake-bridge-client.mjs',import.meta.url).href)+';');
   return {defaults,token:randomUUID()};
 }
+
+export function fakeCodexState(root, endpoint) {
+  const state = path.join(root, 'codex-bridge-state');
+  const runtime = path.join(root, 'codex-runtime');
+  fs.mkdirSync(state, { recursive: true });
+  fs.mkdirSync(path.join(runtime, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(state, 'install.json'), JSON.stringify({ root: runtime, version: '0.4.0' }));
+  fs.writeFileSync(path.join(state, 'fake.json'), JSON.stringify({ endpoint }));
+  fs.writeFileSync(path.join(runtime, 'lib/client.mjs'), 'export { connectCodex as connect } from ' + JSON.stringify(new URL('./fake-bridge-client.mjs', import.meta.url).href));
+  return state;
+}

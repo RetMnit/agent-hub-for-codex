@@ -1,12 +1,13 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { ROOT, STATE, atomic, readJson } from './common.mjs';
-import { loadBridge } from './bridge.mjs';
+import { loadBridge, loadCodexBridge } from './bridge.mjs';
 
-if (process.argv.length > 2) throw new Error('Usage: node <plugin-root>/server/setup.mjs (install Common/dsh-bridge separately first)');
-const bridge = await loadBridge();
-const runtime = bridge.runtime(); // Shared compatibility check; starts no Host.
+if (process.argv.length > 2) throw new Error('Usage: node <plugin-root>/server/setup.mjs');
+const dsh = await loadBridge().catch(() => null);
+const codex = await loadCodexBridge().catch(() => null);
 const settingsPath = path.join(STATE, 'config.json');
 const old = fs.existsSync(settingsPath) ? readJson(settingsPath) : {};
 if (fs.existsSync(settingsPath)) {
@@ -15,8 +16,8 @@ if (fs.existsSync(settingsPath)) {
   fs.mkdirSync(path.dirname(backup), { recursive: true });
   fs.copyFileSync(settingsPath, backup);
 }
-const defaults = { ...bridge.defaults, ...old.defaults };
-const workspace = path.resolve(process.env.CODEX_DSH_WORKSPACE || defaults.workspace);
-fs.mkdirSync(workspace, { recursive: true });
+const defaults = { ...dsh?.defaults, ...old.defaults };
+const workspace = path.resolve(process.env.CODEX_AGENT_HUB_WORKSPACE || defaults.workspace || os.homedir());
+if (!fs.statSync(workspace, { throwIfNoEntry: false })?.isDirectory()) throw new Error('Choose an existing workspace directory');
 atomic(settingsPath, { sourceRoot: ROOT, token: old.token || randomBytes(32).toString('hex'), defaults: { ...defaults, workspace } });
-console.log(JSON.stringify({ configured: true, stateDir: STATE, version: runtime.version }));
+console.log(JSON.stringify({ configured: true, stateDir: STATE, installed: { dsh: Boolean(dsh), codex: Boolean(codex) } }));

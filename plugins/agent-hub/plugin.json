@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agent-hub",
+  "version": "0.8.0",
+  "description": "Delegate local tasks to DSH and independent Codex threads with saved settings and a shared task panel.",
+  "homepage": "https://github.com/RetMnit/dsh-subagent",
+  "repository": "https://github.com/RetMnit/dsh-subagent.git",
+  "author": {
+    "name": "Mnit"
+  },
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "Agent Hub for Codex",
+        "shortDescription": "DSH 与独立 Codex 任务委派",
+        "longDescription": "在同一工作台配置两种后端、查看进度和结果，并续接已有会话。",
+        "developerName": "Mnit",
+        "category": "Developer Tools",
+        "capabilities": [],
+        "defaultPrompt": "打开 Agent Hub 的 DSH 设置。",
+        "logo": "./assets/icon.svg"
+      }
+    }
+  }
+}

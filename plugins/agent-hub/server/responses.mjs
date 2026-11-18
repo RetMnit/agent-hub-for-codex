@@ -2,13 +2,14 @@ import {terminal} from './common.mjs';
 
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 const panelSummary = panel => panel && pick(panel, ['connected', 'visible', 'windowPresent', 'display', 'jobsRendered', 'renderPending', 'lastError']);
-const settingsSummary = settings => settings && pick(settings, ['workspace', 'preset', 'model', 'permission']);
+const settingsSummary = settings => settings && pick(settings, ['workspace', 'preset', 'model', 'permission', 'effort', 'sandbox']);
 
 function jobSummary(job, {answer = false, details = false, request = false} = {}) {
-  const value = pick(job, ['jobId', 'sessionId', 'mode', 'title', 'status', 'phase', 'error', 'pendingQuestions', 'connection', 'connectionError']);
+  const value = pick(job, ['jobId', 'sessionId', 'backend', 'mode', 'title', 'status', 'phase', 'error', 'pendingQuestions', 'connection', 'connectionError']);
   const recent = job.recentEvents ?? job.events ?? [];
   const lastTool = recent.findLast(event => event.type === 'tool/call');
   if (!terminal(job.status) && lastTool?.tool) value.lastTool = lastTool.tool;
+  if (!terminal(job.status) && job.activity?.length) value.lastActivity = pick(job.activity.at(-1), ['kind', 'text', 'status']);
   const activeChildren = job.descendants?.filter(child => child.status === 'running').length;
   if (activeChildren) value.runningSubagents = activeChildren;
   if (job.backgroundJobs?.length) value.backgroundJobs = job.backgroundJobs.map(item => pick(item, ['id', 'jobId', 'status', 'title']));
@@ -18,6 +19,7 @@ function jobSummary(job, {answer = false, details = false, request = false} = {}
     Object.assign(value, pick(job, ['createdAt', 'finishedAt', 'stopReason', 'actualModel', 'completionScope']));
     if (job.effective) value.effective = settingsSummary(job.effective);
     else if (job.requested) value.requested = settingsSummary(job.requested);
+    else if (job.settings) value.settings = settingsSummary(job.settings);
   }
   return value;
 }
@@ -37,13 +39,13 @@ export function toolResponse(method, value) {
       return {jobs: value.jobs.map(job => jobSummary(job, {request: true})), errors: value.errors, panel: panelSummary(value.panel)};
     case 'status':
       return jobSummary(value, {details: true});
-    case 'cancel':
+    case 'cancel': case 'steer':
       return jobSummary(value);
     case 'wait':
       return {...pick(value, ['cursor', 'reason']), jobs: value.jobs.map(job => jobSummary(job, {answer: terminal(job.status)}))};
     case 'result':
       return jobSummary(value, {answer: true, details: true});
-    case 'doctor': case 'open':
+    case 'doctor': case 'open': case 'configure':
       return {...value, ...(value.panel ? {panel: panelSummary(value.panel)} : {})};
     default:
       return value;

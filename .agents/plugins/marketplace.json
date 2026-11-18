@@ -1,14 +1,14 @@
 {
-  "name": "dsh-subagent-tools",
+  "name": "codex-agent-hub-tools",
   "interface": {
-    "displayName": "DSH Subagent"
+    "displayName": "Agent Hub for Codex"
   },
   "plugins": [
     {
-      "name": "dsh-subagent",
+      "name": "agent-hub",
       "source": {
         "source": "local",
-        "path": "./plugins/dsh-subagent"
+        "path": "./plugins/agent-hub"
       },
       "policy": {
         "installation": "AVAILABLE",

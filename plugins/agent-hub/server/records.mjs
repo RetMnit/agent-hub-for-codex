@@ -9,16 +9,14 @@ export function conversationId(params) {
   return id;
 }
 export function runtimeRecords(state, jobs, requests, clock = Date.now) {
-  const ownerFile = path.join(state, 'job-owners.json');
   const prunedFile = path.join(state, 'pruned-jobs.json');
-  const owners = fs.existsSync(ownerFile) ? readJson(ownerFile) : {};
   const pruned = fs.existsSync(prunedFile) ? readJson(prunedFile) : {};
   let lastCleanup = {removed: 0, checkedAt: null};
   const decorated = job => {
-    const id=owners[job.jobId]??job.conversationId??requests.conversationOf?.(job.requestId);
+    const id = requests.conversationOf?.(job.requestId) ?? job.conversationId;
     const target=requests.targetOf?.(job.requestId);
     // The Host omits sessionId while preparing; a resume already has a durable target.
-    return {...job,...(!job.sessionId&&target?.mode===job.mode?{sessionId:target.sessionId}:{}),...(id?{conversationId:id}:{})};
+    return {...job,...(!job.sessionId&&target?.backend===(job.backend??'dsh')&&target?.mode===job.mode?{sessionId:target.sessionId}:{}),...(id?{conversationId:id}:{})};
   };
   return {
     decorate: decorated,
@@ -28,18 +26,13 @@ export function runtimeRecords(state, jobs, requests, clock = Date.now) {
       if(previous&&((terminal(previous.status)&&!terminal(job.status))||(previous.status!=='starting'&&job.status==='starting')||(terminal(previous.status)===terminal(job.status)&&previous.updatedAt&&job.updatedAt&&previous.updatedAt>job.updatedAt)||JSON.stringify(previous)===JSON.stringify(job)))return previous;
       jobs.set(job.jobId,job);return job;
     },
-    assign(job, id) {
-      conversationId({conversationId:id});
-      if (owners[job.jobId] && owners[job.jobId] !== id) throw new Error('Task already belongs to another Codex conversation');
-      owners[job.jobId]=id;atomic(ownerFile,owners);return decorated(job);
-    },
     accepts(job) {return !Object.hasOwn(pruned,job.jobId)},
     owns(job, id) {return decorated(job).conversationId === id},
     cleanup() {
       const cutoff=clock()-retentionPolicy.days*86400000;
       const groups=new Map();
       for(const job of jobs.values())if(terminal(job.status)){
-        const scope=owners[job.jobId]??job.conversationId??'\u0000legacy';
+        const scope=job.conversationId;
         if(!groups.has(scope))groups.set(scope,[]);groups.get(scope).push(job);
       }
       const candidates=[];
@@ -51,9 +44,8 @@ export function runtimeRecords(state, jobs, requests, clock = Date.now) {
       for(const job of candidates){try{
         requests.forget(job.requestId);
         pruned[job.jobId]=clock();atomic(prunedFile,pruned);
-        jobs.delete(job.jobId);delete owners[job.jobId];removed++;
+        jobs.delete(job.jobId);removed++;
       }catch(error){errors.push({jobId:job.jobId,message:error.message})}}
-      if(removed)atomic(ownerFile,owners);
       lastCleanup={checkedAt:new Date(clock()).toISOString(),removed,...(errors.length?{errors}:{})};
       return lastCleanup;
     },

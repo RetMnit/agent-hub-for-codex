@@ -29,7 +29,7 @@ test('Windows refreshes an installed cache while its real MCP and supervisor rem
     const chdir = process.chdir.bind(process);
     process.chdir = dir => { chdir(dir); record('chdir'); };
   `);
-  const env = {...process.env, CODEX_HOME: home, CODEX_DSH_STATE_DIR: state, DSH_BRIDGE_STATE_DIR: fakeBridgeState(root)};
+  const env = {...process.env, CODEX_HOME: home, CODEX_AGENT_HUB_STATE_DIR: state, DSH_BRIDGE_STATE_DIR: fakeBridgeState(root), CODEX_BRIDGE_STATE_DIR: path.join(root, 'missing-codex')};
   const cli = (...args) => {
     const result = spawnSync(process.env.CODEX_TEST_CLI, args, {env, cwd: root, windowsHide: true, encoding: 'utf8', timeout: 20000});
     assert.equal(result.error, undefined);
@@ -39,12 +39,12 @@ test('Windows refreshes an installed cache while its real MCP and supervisor rem
   let child, supervisorPid, stderr = '';
   try {
     cli('plugin', 'marketplace', 'add', repo, '--json');
-    const installed = cli('plugin', 'add', 'dsh-subagent@dsh-subagent-tools', '--json').installedPath;
+    const installed = cli('plugin', 'add', 'agent-hub@codex-agent-hub-tools', '--json').installedPath;
     assert.equal(path.basename(installed), version);
     assert.ok(!fs.existsSync(path.join(installed, '.git')));
     assert.ok(!fs.existsSync(path.join(installed, 'tests')));
     for (const manifest of ['mcp.json', '.mcp.json']) {
-      const server = JSON.parse(fs.readFileSync(path.join(installed, manifest))).mcpServers['dsh-subagent'];
+      const server = JSON.parse(fs.readFileSync(path.join(installed, manifest))).mcpServers['agent-hub'];
       assert.equal(server.cwd, undefined);
       assert.deepEqual(server.args, ['${PLUGIN_ROOT}/server/mcp.mjs']);
     }
@@ -71,20 +71,20 @@ test('Windows refreshes an installed cache while its real MCP and supervisor rem
     });
     const init = await call('initialize');
     assert.equal(init.result.serverInfo.version, version);
-    const doctor = await call('tools/call', {name: 'dsh_doctor', arguments: {}});
+    const doctor = await call('tools/call', {name: 'hub_doctor', arguments: {}});
     assert.equal(doctor.result.isError, undefined, JSON.stringify(doctor));
-    assert.equal(JSON.parse(doctor.result.content[0].text).runtime.version, 'fake-runtime');
+    assert.equal(JSON.parse(doctor.result.content[0].text).dsh.runtime.version, 'fake-runtime');
     supervisorPid = JSON.parse(fs.readFileSync(path.join(state, 'supervisor.json'))).pid;
     const cwdEntries = fs.readFileSync(cwdLog, 'utf8').trim().split('\n').map(JSON.parse);
     assert.ok(cwdEntries.some(entry => entry.pid === child.pid && entry.event === 'chdir' && entry.cwd === state));
     assert.ok(cwdEntries.some(entry => entry.pid === supervisorPid && entry.event === 'start' && entry.cwd === state));
     assert.ok(cwdEntries.some(entry => entry.pid === supervisorPid && entry.event === 'chdir' && entry.cwd === state));
-    cli('plugin', 'add', 'dsh-subagent@dsh-subagent-tools', '--json');
+    cli('plugin', 'add', 'agent-hub@codex-agent-hub-tools', '--json');
     assert.equal(child.exitCode, null);
     process.kill(supervisorPid, 0);
     assert.ok(!fs.existsSync(path.join(installed, '.git')));
     assert.deepEqual((await call('ping')).result, {});
-    const after = await call('tools/call', {name: 'dsh_doctor', arguments: {}});
+    const after = await call('tools/call', {name: 'hub_doctor', arguments: {}});
     assert.equal(after.result.isError, undefined);
     assert.equal(JSON.parse(fs.readFileSync(path.join(state, 'supervisor.json'))).pid, supervisorPid);
   } finally {

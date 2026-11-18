@@ -33,7 +33,8 @@ export function matchStatusWindows(processes, url, state) {
     } catch {}
   }
   return {exists: matches.length > 0, originMatches: matches.every(item => item.originMatches),
-    windowConfirmed: matches.some(item => item.hasWindow), processCount: matches.length};
+    windowConfirmed: matches.some(item => item.hasWindow), processCount: matches.length,
+    ...(matches.find(item => item.hasWindow && item.originMatches)?.pid ? { windowPid: matches.find(item => item.hasWindow && item.originMatches).pid } : {})};
 }
 
 export async function findStatusWindow(url, state) {
@@ -61,7 +62,12 @@ export async function launchStatusWindow(url, state) {
   return {pid: child.pid};
 }
 
-export function statusPanel({url, state, launch = launchStatusWindow, findWindow = findStatusWindow, clock = Date.now, timeoutMs = 1000, refresh = () => {}}) {
+async function focusStatusWindow(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(New-Object -ComObject WScript.Shell).AppActivate(' + pid + ')'], { windowsHide: true, timeout: 3000 });
+}
+
+export function statusPanel({url, state, launch = launchStatusWindow, findWindow = findStatusWindow, focusWindow = focusStatusWindow, clock = Date.now, timeoutMs = 1000, refresh = () => {}}) {
   const clients = new Map(); const changes = new EventEmitter(); changes.setMaxListeners(100);
   let pending; let launches = 0; let reuses = 0; let lastError; let windowPresent = null; let lastReceiptAt = null;
   const live = () => [...clients.values()].filter(client => clock() - client.seenAt < 6500);
@@ -85,8 +91,13 @@ export function statusPanel({url, state, launch = launchStatusWindow, findWindow
     status() {return {connected: live().length > 0, visible: visible(), windowPresent, lastReceiptAt,
       display: lastError ? 'unavailable' : live().length ? 'live' : windowPresent ? 'background' : 'pending',
       launches, reuses, lastError, renderedJobs: live().flatMap(client => client.jobs)}},
-    async ensure() {
-      if (visible() || live().some(client => client.windowMode)) return this.status();
+    async ensure({ focus = false } = {}) {
+      if (live().some(client => client.windowMode) || visible()) {
+        if (focus) {
+          try { await focusWindow((await findWindow(url(), state)).windowPid); } catch {}
+        }
+        return this.status();
+      }
       if (!pending) pending = (async () => {
         const existing = await findWindow(url(), state);
         windowPresent = existing.exists;
@@ -97,6 +108,7 @@ export function statusPanel({url, state, launch = launchStatusWindow, findWindow
           // owned window may be frozen or throttled while minimized. Reuse it
           // immediately and request a snapshot, without inventing a render ack.
           lastError = undefined;
+          if (focus) { try { await focusWindow(existing.windowPid); } catch {} }
           refresh();
           return this.status();
         } else {
