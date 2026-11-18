@@ -16,6 +16,10 @@ if(process.platform!=='win32')throw new Error('Windows acceptance only');
 const run=promisify(execFile), delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'codex-dsh-background-test-'));
 const state=path.join(root,'state');fs.mkdirSync(state);
+const codexProject = path.join(root, 'registered project');
+const chatOutput = path.join(root, 'chat output');
+fs.mkdirSync(codexProject);
+fs.mkdirSync(chatOutput);
 const token=randomUUID();
 const jobs=[];const codexJobs=[];let starts=0;let supervisor;let browser;let cdp;
 const conversationId='background-acceptance-'+randomUUID();
@@ -26,13 +30,14 @@ const server=http.createServer(async(request,response)=>{
     if (call.mode === 'codex') {
       assert.equal(call.params.client, 'codex-agent-hub');
       if (call.method === 'catalog') result = {
-        projects: [{ root, name: 'Codex test project' }],
+        projects: [{ id: 'registered', root: codexProject, name: 'Codex test project' }],
+        defaults: { project: 'registered' },
         models: [{ id: 'fake-codex', name: 'Codex test model', efforts: ['xhigh'] }],
       };
       else if (call.method === 'start') {
         result = { jobId: 'worker-' + randomUUID(), requestId: call.params.requestId, sessionId: 'independent-' + randomUUID(),
           status: 'completed', createdAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
-          result: 'fake-answer-codex', settings: { workspace: root, model: call.params.model, effort: call.params.effort }, activity: [] };
+          result: 'fake-answer-codex', settings: { workspace: call.params.workspace, model: call.params.model, effort: call.params.effort }, activity: [] };
         codexJobs.push(result);
       } else { await delay(100); result = { cursor: codexJobs.length, jobs: codexJobs }; }
       response.end(JSON.stringify({ result }));
@@ -137,14 +142,25 @@ try{
   await evaluate("document.querySelector('#settings [type=submit]').click()");
   await until(async () => (await call('configuration')).status === 'ready', 'DSH configuration saves from the real form');
   assert.equal((await call('configuration')).values.model.reasoningEffort, 'high');
-  await evaluate("document.querySelector('#backend-codex').click()");
+  await call('configure', { backend: 'codex', workspace: chatOutput });
   await until(() => available('fake-codex'), 'independent Codex settings in the same window');
+  assert.deepEqual(await evaluate("Array.from(document.querySelector('[name=location]').options, o => o.value)"), [codexProject, '']);
+  assert.equal(await evaluate("document.querySelector('[name=location]').value"), codexProject);
+  const settingsStatus = () => evaluate("document.querySelector('#configuration-status').textContent");
+  assert.equal(await settingsStatus(), '首次配置 · 尚未保存');
+  assert.equal(await evaluate("document.querySelector('[name=subagentRoute]').value"), 'agent-hub');
+  assert.equal(await change('subagentRoute', 'native'), 'native');
+  assert.equal(await settingsStatus(), '首次配置 · 有未保存的修改');
+  await evaluate("document.querySelector('#discard-settings').click()");
+  assert.equal(await settingsStatus(), '首次配置 · 尚未保存');
   assert.equal(await evaluate("document.querySelector('[name=subagentRoute]').value"), 'agent-hub');
   assert.equal(await change('subagentRoute', 'native'), 'native');
   assert.equal(await change('model', 'fake-codex'), 'fake-codex');
   assert.equal(await change('effort', 'xhigh'), 'xhigh');
   await evaluate("document.querySelector('#settings [type=submit]').click()");
   await until(async () => (await call('configuration', {backend:'codex'})).status === 'ready', 'Codex configuration saves from the real form');
+  await until(async () => (await settingsStatus()) === '已保存', 'the saved status remains visible');
+  assert.equal((await call('configuration', {backend:'codex'})).values.workspace, codexProject);
   assert.equal((await call('configuration', {backend:'codex'})).values.effort, 'xhigh');
   assert.equal((await call('configuration', {backend:'codex'})).subagentRoute, 'native');
   await evaluate("document.querySelector('#tab-tasks').click()");

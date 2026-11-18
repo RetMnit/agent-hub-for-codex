@@ -2,12 +2,16 @@ import { backendOf } from './common.mjs';
 
 const efforts = items => (items ?? []).map(item => typeof item === 'string' ? item : item.id);
 export function normalizeCatalog(backend, raw) {
-  if (backend === 'codex') return {
-    models: raw.models ?? [],
-    workspaces: (raw.projects ?? []).map(project => ({ path: project.root, title: project.name })),
-    permissions: raw.permissions ?? [],
-    defaults: raw.defaults ?? {},
-  };
+  if (backend === 'codex') {
+    const projects = raw.projects ?? [];
+    const workspace = projects.find(project => project.id === raw.defaults?.project)?.root;
+    return {
+      models: raw.models ?? [],
+      workspaces: projects.map(project => ({ path: project.root, title: project.name })),
+      permissions: raw.permissions ?? [],
+      defaults: { ...raw.defaults, ...(workspace ? { workspace } : {}) },
+    };
+  }
   return {
     workspaces: (raw.workspaces ?? []).map(item => ({ path: item.path, title: item.title })),
     presets: raw.presets?.presets ?? [],

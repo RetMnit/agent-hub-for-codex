@@ -73,35 +73,45 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
   const form = get('settings');
   form.elements = { namedItem: name => fields.get(name) };
   form.querySelector = () => button;
-  const timers = new Map();
-  let nextTimer = 0;
+  const status = get('configuration-status');
+  const discard = get('discard-settings');
+  const chatOutput = 'C:/Users/Test/Documents/Codex/2026-11-18/calculation';
+  let saveError;
   const model = { id: 'dsh-model', name: 'DSH Model', provider: 'p', providerName: 'Provider', efforts: ['medium', 'high'], defaultEffort: 'high' };
   const catalogs = {
     headless: { workspaces: [{ path: 'test-dsh', title: 'DSH project' }], models: [model, { ...model, provider: 'other', efforts: ['max'] }],
       presets: [{ id: 'preset-1', name: 'Preset' }], defaults: { provider: 'p', model: 'dsh-model' } },
     desktop: { models: [{ ...model, id: 'desktop-model' }] },
-    codex: { workspaces: [{ path: 'test-codex', title: 'Codex project' }], models: [{ id: 'codex-model', efforts: ['xhigh'] }] },
+    codex: { workspaces: [{ path: 'test-codex', title: 'Codex project' }], models: [{ id: 'codex-model', efforts: ['xhigh'] }],
+      defaults: { workspace: 'test-codex' } },
   };
   const call = async (method, params) => {
     requests.push({ method, params: structuredClone(params) });
-    if (method === 'configurationDraft') return { configurationId: params.backend, revision: 0, initialWorkspace: 'parent-folder',
-      values: { workspace: 'parent-folder', ...(params.backend === 'dsh' ? { mode: 'headless' } : {}) } };
+    if (method === 'configurationDraft') return { configurationId: params.backend, revision: 0, status: 'draft',
+      initialWorkspace: params.backend === 'dsh' ? 'TEST-DSH/' : chatOutput,
+      values: { workspace: 'default-folder', ...(params.backend === 'dsh' ? { mode: 'headless' } : {}) } };
     if (method === 'catalog') return catalogs[params.mode ?? params.backend];
-    if (method === 'saveConfiguration') return { configurationId: params.backend, values: params.values, revision: params.revision + 1 };
+    if (method === 'saveConfiguration') {
+      if (saveError) throw new Error(saveError);
+      return { ...params, status: 'ready', revision: params.revision + 1 };
+    }
     throw new Error('Unexpected method ' + method);
   };
-  const context = vm.createContext({ document: { createElement: element, getElementById: get }, call, structuredClone,
-    setTimeout(fn, ms) { timers.set(++nextTimer, { fn, ms }); return nextTimer; }, clearTimeout(id) { timers.delete(id); } });
+  const context = vm.createContext({ document: { createElement: element, getElementById: get }, call, structuredClone });
   vm.runInContext(fs.readFileSync(new URL('../plugins/agent-hub/ui/settings.js', import.meta.url), 'utf8'), context);
   const open = vm.runInContext('createSettings(call)', context);
   const change = (name, value) => form.onchange({ target: { name, value } });
+  const typeWorkspace = value => form.oninput({ target: { name: 'workspace', value } });
+  const save = () => form.onsubmit({ preventDefault() {} });
   const flush = () => new Promise(resolve => setImmediate(resolve));
   await open('dsh');
   await flush();
+  assert.equal(status.textContent, '首次配置 · 尚未保存');
+  assert.equal(button.disabled, false);
   assert.equal(get('setting-subagent-route').hidden, true);
   assert.equal(fields.get('model').children[1].tag, 'optgroup');
   assert.equal(fields.get('model').children[1].label, 'Provider');
-  assert.ok(fields.get('location').children.some(option => option.value === 'test-dsh'));
+  assert.equal(fields.get('location').value, 'test-dsh');
   assert.equal(fields.get('model').value, '');
   assert.equal(fields.get('effort').disabled, false);
   assert.deepEqual(fields.get('effort').children.map(option => option.value), ['', 'medium', 'high']);
@@ -111,9 +121,11 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
   change('preset', '');
   change('effort', 'high');
   assert.equal(fields.get('model').value, '["p","dsh-model"]');
-  await form.onsubmit({ preventDefault() {} });
-  assert.equal(get('saved').textContent, '配置已保存');
-  assert.equal([...timers.values()][0].ms, 3000);
+  assert.equal(status.textContent, '首次配置 · 有未保存的修改');
+  await save();
+  assert.equal(status.textContent, '已保存');
+  assert.equal(button.disabled, true);
+  assert.equal(discard.hidden, true);
   assert.deepEqual(requests.at(-1).params.values.model, { provider: 'p', model: 'dsh-model', reasoningEffort: 'high' });
   change('mode', 'desktop');
   await flush();
@@ -125,12 +137,40 @@ test('settings use mode-specific catalogs, group models, link efforts and save o
   assert.equal(get('setting-mode').hidden, true);
   assert.equal(get('setting-subagent-route').hidden, false);
   assert.equal(fields.get('subagentRoute').value, 'agent-hub');
+  assert.equal(status.textContent, '首次配置 · 尚未保存');
+  assert.deepEqual(fields.get('location').children.map(option => option.value), ['test-codex', '']);
+  assert.equal(fields.get('location').value, 'test-codex');
+  assert.equal(fields.get('location').children[0].textContent, 'Codex project');
+  assert.equal(get('location-path').textContent, 'test-codex');
+  change('location', '');
+  assert.equal(get('setting-workspace').hidden, false);
+  typeWorkspace('missing-folder');
+  assert.equal(status.textContent, '首次配置 · 有未保存的修改');
+  saveError = 'Directory does not exist';
+  await save();
+  assert.equal(get('save-error').textContent, '保存失败：Directory does not exist');
+  assert.equal(status.textContent, '首次配置 · 有未保存的修改');
+  discard.onclick();
+  assert.equal(get('save-error').textContent, '');
+  assert.equal(status.textContent, '首次配置 · 尚未保存');
+  assert.equal(fields.get('location').value, 'test-codex');
+  saveError = '';
   change('subagentRoute', 'native');
-  change('location', 'test-codex');
   change('model', 'codex-model');
   change('effort', 'xhigh');
-  await form.onsubmit({ preventDefault() {} });
+  await save();
   assert.deepEqual(requests.at(-1).params, { backend: 'codex', configurationId: 'codex', revision: 0, subagentRoute: 'native',
     values: { workspace: 'test-codex', model: 'codex-model', effort: 'xhigh' } });
+  assert.equal(status.textContent, '已保存');
+  change('subagentRoute', 'agent-hub');
+  assert.equal(status.textContent, '有未保存的修改');
+  assert.equal(discard.hidden, false);
+  await open('dsh');
+  assert.equal(status.textContent, '有未保存的修改');
+  await open('codex');
+  assert.equal(fields.get('subagentRoute').value, 'agent-hub');
+  discard.onclick();
+  assert.equal(fields.get('subagentRoute').value, 'native');
+  assert.equal(status.textContent, '已保存');
   assert.ok(!requests.some(request => /start|resume/.test(request.method)));
 });

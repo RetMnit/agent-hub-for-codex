@@ -23,13 +23,14 @@
     </div>
     <button id="refresh-catalog" type="button">读取可选项</button>
   </div>
+  <p id="configuration-status" class="configuration-status" role="status" hidden></p>
   <p id="catalog-status" role="status"></p>
   <form id="settings" hidden>
     <label id="setting-mode">运行方式<select name="mode"><option value="headless">后台</option><option value="desktop">桌面</option></select></label>
     <label id="setting-subagent-route" hidden>Codex 子代理路由<select name="subagentRoute">
       <option value="agent-hub">Agent Hub（默认）</option><option value="native">原生 Codex</option>
     </select></label>
-    <label id="setting-location"><span id="location-label">工作区</span><select name="location"></select></label>
+    <label id="setting-location"><span id="location-label">工作区</span><select name="location" aria-describedby="location-path"></select><small id="location-path" hidden></small></label>
     <label id="setting-workspace">自定义目录<input name="workspace" autocomplete="off" placeholder="输入绝对路径"></label>
     <label id="setting-preset">预设<select name="preset"></select></label>
     <label>模型<select name="model"></select></label>
@@ -37,7 +38,8 @@
     <label><span id="permission-label">权限</span><select name="permission"></select></label>
     <div class="actions">
       <button type="submit">保存配置</button>
-      <span id="saved" role="status"></span>
+      <button type="button" id="discard-settings" hidden>放弃修改</button>
+      <span id="save-error" class="error" role="alert"></span>
     </div>
   </form>
 </section>
@@ -54,9 +56,12 @@
   #settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:18px}
   #settings label{display:flex;flex-direction:column;gap:8px;font-size:13px;color:#b6c8e5}
   #settings input,#settings select{box-sizing:border-box;width:100%;background:#101722;border:1px solid #3b4e69;border-radius:7px;padding:10px;color:#e3e8f0;font:inherit}
+  #location-path{color:#97a8be;overflow-wrap:anywhere}
   #settings .actions{grid-column:1/-1;justify-content:flex-start}
-  #saved{font-size:13px;color:#78d4b0}
-  #saved.error{color:#ff9c9c}
+  .configuration-status{margin:14px 0 0}
+  .configuration-status.saved{color:#78d4b0}
+  .configuration-status.dirty{color:#e8bd78}
+  #save-error{font-size:13px}
   [hidden]{display:none!important}
 </style>
 <script src="/settings.js" defer></script>

@@ -1,7 +1,25 @@
-const unlisted = ' · 当前目录未列出';
 const permissionNames = { 'read-only': '只读', 'workspace-write': '工作区写入', 'danger-full-access': '完全权限' };
 const customLocation = '';
 const dshModelKey = (provider, model) => JSON.stringify([provider, model]);
+const workspaceKey = value => value?.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+
+function workspaces(catalog) {
+  const paths = new Map();
+  for (const item of catalog.workspaces ?? []) {
+    const key = workspaceKey(item.path);
+    if (key && !paths.has(key)) paths.set(key, item);
+  }
+  return paths;
+}
+
+function sameValues(values, previous) {
+  return Object.keys(values).length === Object.keys(previous).length && Object.entries(values).every(([key, value]) => {
+    const other = previous[key];
+    return value && typeof value === 'object'
+      ? other && typeof other === 'object' && sameValues(value, other)
+      : value === other;
+  });
+}
 
 function selectOptions(select, options, value, groupNames = {}) {
   const list = [...options];
@@ -28,19 +46,31 @@ function createSettings(call) {
   const form = get('settings');
   const field = name => form.elements.namedItem(name);
   const saveButton = form.querySelector('button[type="submit"]');
+  const discardButton = get('discard-settings');
   const reloadButton = get('refresh-catalog');
+  const status = get('configuration-status');
   const states = new Map();
   const catalogs = new Map();
   let current;
-  let initialWorkspace;
   let catalogRequest;
-  let noticeTimer;
 
-  function notice(message, { error = false, temporary = false } = {}) {
-    clearTimeout(noticeTimer);
-    get('saved').textContent = message;
-    get('saved').className = error ? 'error' : '';
-    if (temporary) noticeTimer = setTimeout(() => notice(''), 3000);
+  const originalValues = state => ({
+    ...state.entry.values, workspace: state.suggestedWorkspace ?? state.entry.values.workspace,
+  });
+  const originalRoute = entry => entry.subagentRoute ?? 'agent-hub';
+  const dirty = state => !sameValues(state.values, originalValues(state)) || state.subagentRoute !== originalRoute(state.entry);
+
+  function renderStatus(state) {
+    const firstSave = state.entry.status !== 'ready';
+    const edited = dirty(state);
+    const detail = edited ? '有未保存的修改' : firstSave ? '尚未保存' : '已保存';
+    status.textContent = state.saving ? '正在保存…' : firstSave ? '首次配置 · ' + detail : detail;
+    status.className = 'configuration-status' + (state.saving ? '' : edited ? ' dirty' : firstSave ? '' : ' saved');
+    status.hidden = false;
+    get('save-error').textContent = state.error ?? '';
+    saveButton.disabled = state.saving || (!firstSave && !edited);
+    discardButton.hidden = !edited;
+    discardButton.disabled = state.saving === true;
   }
 
   const catalogKey = state => state.backend === 'dsh' ? state.values.mode : 'codex';
@@ -57,7 +87,7 @@ function createSettings(call) {
   function render(state) {
     if (state !== current) return;
     const dsh = state.backend === 'dsh';
-    const { values, entry } = state;
+    const { values } = state;
     const catalog = catalogOf(state);
     const defaults = catalog.defaults ?? {};
     const models = catalog.models ?? [];
@@ -72,16 +102,19 @@ function createSettings(call) {
     get('location-label').textContent = dsh ? '工作区' : '项目 / 工作区';
     get('permission-label').textContent = dsh ? '权限' : '沙箱';
 
-    const paths = new Map();
-    if (initialWorkspace) paths.set(initialWorkspace, { value: initialWorkspace, label: '当前聊天 · ' + initialWorkspace });
-    for (const item of catalog.workspaces ?? []) {
-      if (item.path && !paths.has(item.path)) paths.set(item.path, { value: item.path, label: item.title ? item.title + ' · ' + item.path : item.path });
+    const paths = workspaces(catalog);
+    const nameCounts = new Map();
+    for (const { title } of paths.values()) {
+      if (title) nameCounts.set(title, (nameCounts.get(title) ?? 0) + 1);
     }
-    if (entry.values.workspace && !paths.has(entry.values.workspace)) {
-      paths.set(entry.values.workspace, { value: entry.values.workspace, label: entry.values.workspace + unlisted });
-    }
-    const custom = state.custom ?? !paths.has(values.workspace);
-    selectOptions(field('location'), [...paths.values(), { value: customLocation, label: '自定义目录…' }], custom ? customLocation : values.workspace);
+    const options = [...paths.values()].map(({ path, title }) => ({
+      value: path, label: nameCounts.get(title) > 1 ? title + ' · ' + path : title || path,
+    }));
+    const selected = paths.get(workspaceKey(values.workspace));
+    const custom = state.custom === true || !selected;
+    selectOptions(field('location'), [...options, { value: customLocation, label: '自定义目录…' }], custom ? customLocation : selected.path);
+    get('location-path').textContent = custom ? '' : selected.path;
+    get('location-path').hidden = custom;
     get('setting-workspace').hidden = !custom;
     field('workspace').value = values.workspace;
 
@@ -91,7 +124,7 @@ function createSettings(call) {
     const inherit = dsh ? (values.preset ? '沿用预设' : '沿用 DSH 默认') : '沿用 Codex 配置';
     const modelOptions = [{ value: '', label: inherit + (defaults.model && (!dsh || !values.preset) ? '（' + defaults.model + '）' : '') }];
     for (const item of models) modelOptions.push({ value: dsh ? dshModelKey(item.provider, item.id) : item.id, label: item.name ?? item.id, group: dsh ? item.provider : undefined });
-    if (model && !currentModel) modelOptions.push({ value: model, label: (dsh ? values.model.model + ' · ' + values.model.provider : model) + ' · 已保存' });
+    if (model && !currentModel) modelOptions.push({ value: model, label: (dsh ? values.model.model + ' · ' + values.model.provider : model) + ' · 当前值' });
     selectOptions(field('model'), modelOptions, model, Object.fromEntries(models.filter(item => item.provider).map(item => [item.provider, item.providerName])));
     const defaultEffort = !model && (!dsh || currentModel)
       ? defaults.effort ?? currentModel?.defaultEffort
@@ -109,7 +142,7 @@ function createSettings(call) {
     selectOptions(field('permission'), [{ value: '', label: '沿用默认' + (defaults.permission ? '（' + (permissionNames[defaults.permission] ?? defaults.permission) + '）' : '') },
       ...permissions.map(value => ({ value, label: permissionNames[value] ?? value }))], dsh ? values.permission : values.sandbox);
     form.hidden = false;
-    saveButton.disabled = state.saving === true;
+    renderStatus(state);
   }
 
   async function loadCatalog(state, refresh) {
@@ -121,6 +154,12 @@ function createSettings(call) {
       const catalog = await call('catalog', { backend: state.backend, mode: state.values.mode, refresh });
       if (request !== catalogRequest) return;
       catalogs.set(key, catalog);
+      if (state.entry.status === 'draft' && !state.saving) {
+        const paths = workspaces(catalog);
+        const suggestion = paths.get(workspaceKey(state.entry.initialWorkspace)) ?? paths.get(workspaceKey(catalog.defaults?.workspace));
+        state.suggestedWorkspace = suggestion?.path;
+        if (!state.workspaceChosen) state.values.workspace = originalValues(state).workspace;
+      }
       get('catalog-status').textContent = '';
       render(state);
     } catch (error) {
@@ -133,13 +172,14 @@ function createSettings(call) {
   }
 
   form.onchange = event => {
-    if (!current) return;
+    if (!current?.entry) return;
     const { name, value } = event.target;
     const state = current;
     const { values } = state;
     const dsh = state.backend === 'dsh';
     const set = (key, selection) => { if (selection) values[key] = selection; else delete values[key]; };
     if (name === 'location') {
+      state.workspaceChosen = true;
       state.custom = !value;
       if (value) values.workspace = value;
     } else if (name === 'subagentRoute') state.subagentRoute = value;
@@ -165,30 +205,49 @@ function createSettings(call) {
         }
       } else set('effort', value);
     } else if (name === 'preset') set('preset', value);
-    notice('');
+    state.error = '';
     render(state);
     if (name === 'mode') void loadCatalog(state, false);
   };
   form.oninput = event => {
-    if (current && event.target.name === 'workspace') current.values.workspace = event.target.value;
+    if (!current?.entry || event.target.name !== 'workspace') return;
+    current.values.workspace = event.target.value;
+    current.workspaceChosen = true;
+    current.error = '';
+    renderStatus(current);
+  };
+  discardButton.onclick = () => {
+    if (!current?.entry || current.saving) return;
+    current.values = structuredClone(originalValues(current));
+    current.subagentRoute = originalRoute(current.entry);
+    current.workspaceChosen = false;
+    current.custom = false;
+    current.error = '';
+    render(current);
   };
   form.onsubmit = async event => {
     event.preventDefault();
     const state = current;
-    if (!state || state.saving) return;
-    state.saving = true;
-    saveButton.disabled = true;
-    notice('保存中…');
+    if (!state?.entry || state.saving || (state.entry.status === 'ready' && !dirty(state))) return;
+    const values = structuredClone(state.values);
     const { configurationId, revision } = state.entry;
+    const { subagentRoute } = state;
+    state.saving = true;
+    state.error = '';
+    renderStatus(state);
     try {
-      state.entry = await call('saveConfiguration', { backend: state.backend, configurationId, revision, values: state.values,
-        ...(state.backend === 'codex' ? { subagentRoute: state.subagentRoute } : {}) });
-      if (state === current) notice('配置已保存', { temporary: true });
+      state.entry = await call('saveConfiguration', { backend: state.backend, configurationId, revision, values,
+        ...(state.backend === 'codex' ? { subagentRoute } : {}) });
+      state.suggestedWorkspace = undefined;
+      if (sameValues(state.values, values) && state.subagentRoute === subagentRoute) {
+        state.values = structuredClone(state.entry.values);
+        state.subagentRoute = originalRoute(state.entry);
+      }
     } catch (error) {
-      if (state === current) notice(error.message, { error: true });
+      state.error = '保存失败：' + error.message;
     } finally {
       state.saving = false;
-      if (state === current) saveButton.disabled = false;
+      render(state);
     }
   };
   reloadButton.onclick = () => { if (current?.entry) void loadCatalog(current, true); };
@@ -203,17 +262,16 @@ function createSettings(call) {
     }
     current = state;
     for (const name of ['dsh', 'codex']) get('backend-' + name).setAttribute('aria-pressed', String(name === backend));
-    notice('');
     if (!state.entry) {
       form.hidden = true;
+      status.hidden = true;
       reloadButton.disabled = true;
       get('catalog-status').textContent = '正在加载配置…';
       try {
-        state.pending ??= call('configurationDraft', { backend, workspace: initialWorkspace });
+        state.pending ??= call('configurationDraft', { backend });
         state.entry = await state.pending;
-        initialWorkspace ??= state.entry.initialWorkspace;
         state.values = structuredClone(state.entry.values);
-        state.subagentRoute = state.entry.subagentRoute ?? 'agent-hub';
+        state.subagentRoute = originalRoute(state.entry);
       } catch (error) {
         if (state === current) get('catalog-status').textContent = error.message;
         return;

@@ -21,9 +21,12 @@ test('settings are scoped per chat and backend, and retries use an immutable sna
   assert.throws(() => store.resolve(task), /Save this Codex conversation/);
   assert.throws(() => store.resolve({ ...task, userAuthorized: false }), /Explicit user permission/);
   const dshDraft = store.create(parent);
-  const codexDraft = store.create({ ...codex, workspace: state });
+  const chatFolder = path.join(state, 'chat-folder');
+  fs.mkdirSync(chatFolder);
+  const codexDraft = store.create({ ...codex, workspace: chatFolder });
   assert.equal(codexDraft.subagentRoute, 'agent-hub');
-  assert.equal(codexDraft.initialWorkspace, state);
+  assert.equal(codexDraft.initialWorkspace, chatFolder);
+  assert.equal(codexDraft.values.workspace, state);
   assert.notEqual(dshDraft.configurationId, codexDraft.configurationId);
   const dshSave = { ...parent, configurationId: dshDraft.configurationId };
   const dshValues = { ...dshDraft.values, model: { provider: 'fake', model: 'original' } };
@@ -59,14 +62,20 @@ test('settings are scoped per chat and backend, and retries use an immutable sna
   assert.equal(store.read(codex).subagentRoute, 'agent-hub');
 });
 
-test('a saved Codex configuration from before routing defaults to Agent Hub', t => {
+test('legacy drafts use the default folder and saved Codex folders are preserved', t => {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-settings-test-'));
   t.after(() => fs.rmSync(state, { recursive: true, force: true }));
   const parent = { conversationId: 'chat-A', backend: 'codex' };
-  const entry = { ...parent, configurationId: 'legacy', revision: 1, status: 'ready', values: { workspace: state } };
-  fs.writeFileSync(path.join(state, 'configurations.json'), JSON.stringify({ [JSON.stringify(['chat-A', 'codex'])]: entry }));
+  const chatFolder = path.join(state, 'chat-output');
+  fs.mkdirSync(chatFolder);
+  const entry = { ...parent, configurationId: 'legacy', revision: 1, status: 'ready', values: { workspace: chatFolder } };
+  const draft = { ...entry, conversationId: 'chat-B', configurationId: 'draft', revision: 0, status: 'draft', initialWorkspace: chatFolder };
+  fs.writeFileSync(path.join(state, 'configurations.json'), JSON.stringify({
+    [JSON.stringify(['chat-A', 'codex'])]: entry, [JSON.stringify(['chat-B', 'codex'])]: draft,
+  }));
   const store = configurationStore(state, { workspace: state });
   assert.deepEqual(store.read(parent), { ...entry, subagentRoute: 'agent-hub' });
+  assert.deepEqual(store.read({ ...parent, conversationId: 'chat-B' }), { ...draft, values: { workspace: state }, subagentRoute: 'agent-hub' });
 });
 
 test('existing sessions can resume without configuration and keep their original settings', t => {

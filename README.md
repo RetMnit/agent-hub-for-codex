@@ -12,7 +12,7 @@ Agent Hub 在一个本地看板中管理 DSH 和独立 Codex 任务。启用插�
 从 GitHub 的发布标签安装。若已登记本地检出或其他标签，先运行 `codex plugin marketplace remove codex-agent-hub-tools`。CLI 可以使用 Codex Desktop 自带的 `codex.exe`。
 
 ```powershell
-codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.1
+codex plugin marketplace add https://github.com/RetMnit/agent-hub-for-codex.git --ref v0.8.2
 $installed = codex plugin add agent-hub@codex-agent-hub-tools --json | ConvertFrom-Json
 node (Join-Path $installed.installedPath 'server/setup.mjs')
 ```
@@ -24,7 +24,8 @@ Setup 初始化 Agent Hub 自身目录和访问令牌。首次可用 `CODEX_AGEN
 ## 工作流程
 
 - “打开 Agent Hub 的 DSH 设置”或“打开 Agent Hub 的 Codex 设置”。一个 Edge 应用窗口内有「任务」和「设置」。每个父聊天可以分别保存两种后端的设置。
-- DSH 可选桌面／后台、登记工作区、预设、按提供方分组的模型、推理档位和权限。独立 Codex 可选项目、模型、推理档位和沙箱。两者都可填已有自定义目录。列表按后端与运行方式读取。目录离线时可保留表单值，点击「读取可选项」可以连接对应后端。
+- DSH 可选桌面／后台、登记工作区、预设、按提供方分组的模型、推理档位和权限。独立 Codex 可选项目、模型、推理档位和沙箱。工作区菜单列出已登记的目录，也可选择「自定义目录」。首次配置优先匹配当前聊天的登记目录，其次使用 Codex 当前项目或插件默认目录。列表按后端与运行方式读取。目录离线时可保留表单值，点击「读取可选项」可以连接对应后端。
+- 设置页持续显示首次配置、已保存或有未保存修改。点击「放弃修改」可恢复到上次保存的设置，首次配置则恢复到预填值。
 - DSH 沿用默认模型时，可以直接选该模型支持的推理档位。选中具体档位会同时选中该模型。沿用其他预设时，先明确选择模型再设置档位。任务卡片优先显示 DSH 请求实际使用的模型和档位。
 - Agent Hub 按用户请求用已保存的配置新建一项或多项任务。DSH 派发须明确指定。修改配置影响后续新建。以同一 requestId 重试会重用初次派发的配置快照。
 - 续接沿用目标会话原来的设置，可以直接续接。DSH 需要指定原来的桌面／后台方式。同一个子会话的多轮任务在同一卡片。

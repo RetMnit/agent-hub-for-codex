@@ -10,7 +10,7 @@ description: Route Codex subagent requests using the current chat's Agent Hub se
 用户提出 Codex 子代理任务即授权按选中的路径执行该任务。DSH 仍须用户明确指定并授权。用户只要求配置、查询或打开看板时，仅执行该操作。
 
 - 从本聊天执行环境读取 CODEX_THREAD_ID（回退 CODEX_SESSION_ID）。给所有会话范围的工具传入该值。用户未指定 ID 时用这个值，禁止猜测会话或用工作区名代替。跨聊天续接仍使用当前父聊天的 ID，目标子会话 ID 单独传入。
-- 通过 Agent Hub 新建前调用 hub_configuration，传 backend（dsh 或 codex）。missing/draft 时调用 hub_configure，已知当前工作目录时传入 workspace 作为初始建议。插件会打开自身面板，让用户保存。ready 时直接使用。保存配置本身不授权派发。
+- 通过 Agent Hub 新建前调用 hub_configuration，传 backend（dsh 或 codex）。missing/draft 时调用 hub_configure，已知当前工作目录时传入 workspace，供面板匹配已登记的工作区。插件会打开自身面板，让用户保存。ready 时直接使用。保存配置本身不授权派发。
 - 用 hub_start 或 hub_start_many 创建任务。任务使用独立 requestId，重试同一请求时复用。发送具体任务和必要上下文。独立 Codex 线程需要自行取得上下文。
 - 用 hub_sessions 查找目标，用 hub_resume 原地续接。DSH 要指定目标原来的 desktop 或 headless。续接沿用目标自己的工作区、模型和权限，可以直接续接。独立 Codex 在桌面打开后，完全退出应用才能从桥接端继续。
 - 用 hub_wait 等待有进度或完成。结束结果已返回时直接使用，必要时才调用 hub_result。hub_list 可查当前聊天的两种后端。只有在用户明确授意运行中追加内容时，对独立 Codex 调用 hub_steer。

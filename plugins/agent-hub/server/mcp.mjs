@@ -12,7 +12,7 @@ const task = { prompt: string, title: string, requestId: { ...string, descriptio
 const dispatch = { backend, userAuthorized, ...task };
 const jobId = string;
 const definitions = [
-  ['configure', 'Open Agent Hub settings for this backend. The user saves settings in the panel. A save does not authorize dispatch.', { backend, workspace: { ...string, description: 'Current parent chat workspace, if known. Only seeds the initial draft.' } }, ['backend'], false],
+  ['configure', 'Open Agent Hub settings for this backend. The user saves settings in the panel. A save does not authorize dispatch.', { backend, workspace: { ...string, description: 'Current parent chat directory, if known. The panel suggests it when it matches a registered workspace.' } }, ['backend'], false],
   ['configuration', 'Read settings for the current chat. For an unspecified Codex subagent route, call this with backend codex first. subagentRoute is agent-hub by default, or native if selected in settings. Save once before starting a new Agent Hub session.', { backend }, ['backend'], true],
   ['doctor', 'Read both shared bridges’ diagnostics without starting a task.', {}, [], true],
   ['catalog', 'Read selectable settings. Use refresh:true only when asked to load options from an offline backend. It may start the selected host without a model turn.', { backend, mode, refresh: { type: 'boolean' } }, ['backend'], true],

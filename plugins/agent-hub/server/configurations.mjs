@@ -48,7 +48,8 @@ export function configurationStore(state, defaults) {
   const get = params => {
     const backend = backendOf(params);
     const entry = entries[keyOf(params)] ?? { conversationId: conversationId(params), backend, status: 'missing' };
-    return backend === 'codex' ? { subagentRoute: 'agent-hub', ...entry } : entry;
+    const seeded = entry.status === 'draft' ? { ...entry, values: { ...entry.values, workspace: defaults.workspace } } : entry;
+    return backend === 'codex' ? { subagentRoute: 'agent-hub', ...seeded } : seeded;
   };
   const read = params => structuredClone(get(params));
   const store = (params, entry) => {
@@ -65,7 +66,7 @@ export function configurationStore(state, defaults) {
       if (entry.status !== 'missing') return read(params);
       const { backend } = entry;
       const current = directory(params.workspace) ? params.workspace : undefined;
-      const workspace = current ?? defaults.workspace;
+      const workspace = defaults.workspace;
       const values = backend === 'dsh' ? { workspace, mode: 'headless', ...(defaults.permission ? { permission: defaults.permission } : {}) } : { workspace };
       return store(params, { ...entry, initialWorkspace: current, configurationId: 'configuration-' + randomUUID(), status: 'draft', revision: 0, values: select(backend, values) });
     },
